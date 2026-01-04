@@ -1,0 +1,24 @@
+# Netlify 설정 파일
+# Netlify Functions와 빌드 설정
+
+[build]
+  # React 프로젝트 빌드 명령
+  command = "npm run build"
+  # 퍼블리시 디렉토리 (Vite 빌드 결과물)
+  publish = "dist"
+
+[build.environment]
+  # Node.js 버전 (Netlify Functions 사용 시 필요, Ubuntu 20.04+ 호환)
+  NODE_VERSION = "20"
+
+# Functions 설정
+[functions]
+  # Functions 디렉토리
+  directory = "netlify/functions"
+
+# 리다이렉트 규칙 (SPA 지원)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
