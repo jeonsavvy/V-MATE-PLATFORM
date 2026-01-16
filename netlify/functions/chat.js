@@ -23,11 +23,11 @@ exports.handler = async (event, context) => {
         prodOrigin,                     // 프로덕션 환경 (환경 변수 또는 동적 감지)
         'http://localhost:8888'         // 로컬 개발 환경
     ].filter(Boolean); // null/undefined 제거
-    
+
     // 요청 Origin 확인
     const origin = event.headers.origin || event.headers.Origin;
     const allowedOrigin = allowedOrigins.includes(origin) ? origin : null;
-    
+
     // CORS 헤더 설정 (보안을 위해 허용된 도메인만 설정)
     const headers = {
         'Access-Control-Allow-Origin': allowedOrigin || prodOrigin || '*', // 동적으로 현재 도메인 사용
@@ -58,21 +58,21 @@ exports.handler = async (event, context) => {
         // 환경 변수에서 API 키 가져오기
         // Netlify 대시보드의 Environment variables에서 설정한 값 사용
         const apiKey = process.env.GOOGLE_API_KEY;
-        
+
         // 디버깅을 위한 로깅
         console.log('[V-MATE] Function started');
         console.log('[V-MATE] API Key exists:', !!apiKey);
         console.log('[V-MATE] API Key length:', apiKey ? apiKey.length : 0);
         console.log('[V-MATE] Request method:', event.httpMethod);
         console.log('[V-MATE] Request headers:', JSON.stringify(event.headers, null, 2));
-        
+
         if (!apiKey) {
             console.error('[V-MATE] ERROR: GOOGLE_API_KEY is not set');
             return {
                 statusCode: 500,
                 headers,
-                body: JSON.stringify({ 
-                    error: 'API key not configured. Please set GOOGLE_API_KEY in Netlify environment variables.' 
+                body: JSON.stringify({
+                    error: 'API key not configured. Please set GOOGLE_API_KEY in Netlify environment variables.'
                 })
             };
         }
@@ -89,7 +89,7 @@ exports.handler = async (event, context) => {
             return {
                 statusCode: 400,
                 headers,
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     error: 'Invalid request body. Expected JSON format.',
                     details: parseError.message
                 })
@@ -103,8 +103,8 @@ exports.handler = async (event, context) => {
             return {
                 statusCode: 400,
                 headers,
-                body: JSON.stringify({ 
-                    error: 'userMessage is required and must be a non-empty string.' 
+                body: JSON.stringify({
+                    error: 'userMessage is required and must be a non-empty string.'
                 })
             };
         }
@@ -122,7 +122,7 @@ exports.handler = async (event, context) => {
         // 2. 대화 히스토리 (이전 대화들) - 컨텍스트 유지를 위해 순서대로 추가
         // 3. 현재 사용자 메시지 - 가장 마지막에 추가
         const contents = [];
-        
+
         // 시스템 프롬프트를 첫 메시지로 추가
         // 이렇게 하면 AI가 캐릭터의 성격, 말투, 이중 심리 시스템(속마음/실제 말 분리)을 이해합니다
         if (systemPrompt) {
@@ -143,7 +143,7 @@ exports.handler = async (event, context) => {
         if (messageHistory && Array.isArray(messageHistory)) {
             // 가장 최근 20개 메시지만 추출 (Sliding Window)
             const recentHistory = messageHistory.slice(-20);
-            
+
             recentHistory.forEach(msg => {
                 if (msg.role === 'user') {
                     // 사용자 메시지는 그대로 추가
@@ -155,8 +155,8 @@ exports.handler = async (event, context) => {
                     // AI 응답은 객체 형태로 저장되어 있으므로 response 필드만 추출
                     // [이중 심리 시스템 구현] inner_heart는 UI에서만 표시되므로 API에는 전달하지 않음
                     // API에는 실제 말(response)만 전달하여 대화 맥락을 자연스럽게 유지
-                    const assistantText = typeof msg.content === 'object' 
-                        ? msg.content.response 
+                    const assistantText = typeof msg.content === 'object'
+                        ? msg.content.response
                         : msg.content;
                     contents.push({
                         role: "model",
@@ -175,11 +175,14 @@ exports.handler = async (event, context) => {
 
         // 모델 선택 로직: messageHistory.length >= 2일 때부터 고성능 모델 사용
         // messageHistory는 이전 대화들을 담고 있으므로, 길이가 2 이상이면 최소 2번째 질문부터 고성능 모델 사용
+        // 모델 선택 로직 (Dynamic Model Switching):
+        // 1. 초기 대화 (History < 2): 빠른 응답을 위해 'gemini-flash-latest' (1.5 Flash) 사용
+        // 2. 심층 대화 (History >= 2): 고성능 추론을 위해 'gemini-3-flash-preview' 사용
         const messageHistoryLength = messageHistory ? messageHistory.length : 0;
-        const modelName = messageHistoryLength >= 2 
-            ? 'gemini-3-flash-preview' 
+        const modelName = messageHistoryLength >= 2
+            ? 'gemini-3-flash-preview'
             : 'gemini-flash-latest';
-        
+
         // 서버 로그에만 기록 (클라이언트에는 노출하지 않음)
         console.log(`[V-MATE] Model: ${modelName}, Message History Length: ${messageHistoryLength}`);
 
@@ -212,24 +215,24 @@ exports.handler = async (event, context) => {
             clearTimeout(timeoutId);
         } catch (fetchError) {
             clearTimeout(timeoutId);
-            
+
             // 타임아웃 오류
             if (fetchError.name === 'AbortError') {
                 return {
                     statusCode: 504,
                     headers,
-                    body: JSON.stringify({ 
-                        error: 'Request timeout. Gemini API did not respond in time.' 
+                    body: JSON.stringify({
+                        error: 'Request timeout. Gemini API did not respond in time.'
                     })
                 };
             }
-            
+
             // 네트워크 오류
             return {
                 statusCode: 503,
                 headers,
-                body: JSON.stringify({ 
-                    error: 'Failed to connect to Gemini API. Please try again later.' 
+                body: JSON.stringify({
+                    error: 'Failed to connect to Gemini API. Please try again later.'
                 })
             };
         }
@@ -242,8 +245,8 @@ exports.handler = async (event, context) => {
             return {
                 statusCode: 502,
                 headers,
-                body: JSON.stringify({ 
-                    error: 'Invalid response from Gemini API.' 
+                body: JSON.stringify({
+                    error: 'Invalid response from Gemini API.'
                 })
             };
         }
@@ -251,7 +254,7 @@ exports.handler = async (event, context) => {
         // Gemini API 에러 처리
         if (!geminiResponse.ok || geminiData.error) {
             let errorMessage = 'Failed to get response from Gemini API';
-            
+
             if (geminiData.error) {
                 // API 키 관련 오류
                 if (geminiData.error.message?.includes('API_KEY') || geminiData.error.message?.includes('API key')) {
@@ -262,11 +265,11 @@ exports.handler = async (event, context) => {
                     errorMessage = geminiData.error.message || errorMessage;
                 }
             }
-            
+
             return {
                 statusCode: geminiResponse.status || 500,
                 headers,
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     error: errorMessage
                 })
             };
@@ -277,8 +280,8 @@ exports.handler = async (event, context) => {
             return {
                 statusCode: 502,
                 headers,
-                body: JSON.stringify({ 
-                    error: 'Invalid response format from Gemini API.' 
+                body: JSON.stringify({
+                    error: 'Invalid response format from Gemini API.'
                 })
             };
         }
@@ -298,12 +301,12 @@ exports.handler = async (event, context) => {
         console.error('[V-MATE] Unexpected error:', error);
         console.error('[V-MATE] Error stack:', error.stack);
         console.error('[V-MATE] Event:', JSON.stringify(event, null, 2));
-        
+
         // 프로덕션 환경에서는 상세한 에러 정보를 클라이언트에 노출하지 않음
         return {
             statusCode: 500,
             headers,
-            body: JSON.stringify({ 
+            body: JSON.stringify({
                 error: 'Internal server error. Please try again later.',
                 // 디버깅을 위해 개발 환경에서는 에러 메시지 포함
                 ...(process.env.NETLIFY_DEV && { details: error.message })

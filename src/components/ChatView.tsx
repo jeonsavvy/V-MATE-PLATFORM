@@ -40,7 +40,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
   useEffect(() => {
     const loadHistory = async () => {
       isLoadingHistoryRef.current = true
-      
+
       try {
         if (!user) {
           const localKey = `chat_history_${character.id}`
@@ -119,7 +119,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
             ])
             return
           }
-          
+
           const { data: { session } } = await supabase.auth.getSession()
           if (!session) {
             console.warn("No session found, cannot load chat history for logged in user")
@@ -149,7 +149,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
             console.error("Supabase query error:", error)
             throw error
           }
-          
+
           console.log(`Loaded ${data?.length || 0} messages from Supabase for user ${user.id}, character ${character.id}`)
           if (data && data.length > 0) {
             console.log("Raw data from Supabase:", data)
@@ -175,10 +175,10 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
                 }
               }
             })
-          
-          console.log(`Parsed ${loadedMessages.length} messages`)
-          
-          if (loadedMessages.length === 0 || loadedMessages[0].id !== "greeting") {
+
+            console.log(`Parsed ${loadedMessages.length} messages`)
+
+            if (loadedMessages.length === 0 || loadedMessages[0].id !== "greeting") {
               setMessages([
                 {
                   id: "greeting",
@@ -247,7 +247,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
       console.log("Skipping save: history is loading")
       return
     }
-    
+
     if (!user && messages.length > 1) {
       const localKey = `chat_history_${character.id}`
       const messagesToSave = messages.filter(msg => msg.id !== "greeting")
@@ -264,7 +264,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
 
   useEffect(() => {
     if (user) return // 로그인 사용자는 제외
-    
+
     const handleBeforeUnload = () => {
       if (messagesRef.current.length > 1) {
         const localKey = `chat_history_${character.id}`
@@ -302,11 +302,11 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
       content: text,
     }
     setMessages((prev) => [...prev, userMessage])
-    
+
     if (user) {
       await saveMessage(userMessage)
     }
-    
+
     setInputValue("")
     setIsLoading(true)
 
@@ -387,8 +387,8 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
             character.id === "mika"
               ? "선생님... 잠깐만, 뭔가 이상한 기분이 드는데? 다시 말해줄 수 있어?"
               : character.id === "alice"
-              ? "흠, 무언가 오류가 있었던 것 같다. 다시 한 번 말해달라."
-              : "어? 뭔가 꼬인 것 같은데... 다시 말해봐.",
+                ? "흠, 무언가 오류가 있었던 것 같다. 다시 한 번 말해달라."
+                : "어? 뭔가 꼬인 것 같은데... 다시 말해봐.",
         }
       }
 
@@ -398,7 +398,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
         content: parsed,
       }
       setMessages((prev) => [...prev, assistantMessage])
-      
+
       if (user) {
         await saveMessage(assistantMessage)
       }
@@ -413,14 +413,14 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
             character.id === "mika"
               ? "선생님... 연결이 안 돼? 나랑 말하는 거 싫어하는 거 아니지?"
               : character.id === "alice"
-              ? "연결이 끊어졌나... 다시 시도해보자."
-              : "어? 연결 끊긴 것 같은데?",
+                ? "연결이 끊어졌나... 다시 시도해보자."
+                : "어? 연결 끊긴 것 같은데?",
           response:
             character.id === "mika"
               ? "선생님... 인터넷 연결 확인해줄 수 있어? 나랑 대화하고 싶은 거 맞지? ☆"
               : character.id === "alice"
-              ? "네트워크 연결에 문제가 있는 것 같다. 연결을 확인한 후 다시 시도해달라."
-              : "어? 연결이 안 되는 것 같은데... 다시 말해봐.",
+                ? "네트워크 연결에 문제가 있는 것 같다. 연결을 확인한 후 다시 시도해달라."
+                : "어? 연결이 안 되는 것 같은데... 다시 말해봐.",
         }
       } else if (errorMsg.includes("API 키") || errorMsg.includes("만료")) {
         parsed = {
@@ -430,8 +430,8 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
             character.id === "mika"
               ? "선생님... 뭔가 문제가 있는 것 같아. 나중에 다시 말해줄 수 있어?"
               : character.id === "alice"
-              ? "시스템에 문제가 발생했다. 잠시 후 다시 시도해달라."
-              : "서버 쪽 문제인 것 같은데... 나중에 다시 말해줘.",
+                ? "시스템에 문제가 발생했다. 잠시 후 다시 시도해달라."
+                : "서버 쪽 문제인 것 같은데... 나중에 다시 말해줘.",
         }
       } else if (errorMsg.includes("시간이 초과")) {
         parsed = {
@@ -441,8 +441,8 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
             character.id === "mika"
               ? "선생님... 응답이 좀 느린 것 같은데? 다시 말해줄 수 있어?"
               : character.id === "alice"
-              ? "응답이 지연되고 있다. 잠시 후 다시 시도해달라."
-              : "응답이 좀 느린 것 같은데... 다시 말해봐.",
+                ? "응답이 지연되고 있다. 잠시 후 다시 시도해달라."
+                : "응답이 좀 느린 것 같은데... 다시 말해봐.",
         }
       } else {
         parsed = {
@@ -451,14 +451,14 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
             character.id === "mika"
               ? "뭔가 이상한데... 선생님한테는 보여주고 싶지 않은데..."
               : character.id === "alice"
-              ? "오류가 발생했다. 다시 시도해보자."
-              : "어? 뭔가 이상한데...",
+                ? "오류가 발생했다. 다시 시도해보자."
+                : "어? 뭔가 이상한데...",
           response:
             character.id === "mika"
               ? "선생님... 잠깐만, 뭔가 이상한 기분이 드는데? 다시 말해줄 수 있어?"
               : character.id === "alice"
-              ? "예상치 못한 오류가 발생했다. 다시 한 번 말해달라."
-              : "어? 뭔가 꼬인 것 같은데... 다시 말해봐.",
+                ? "예상치 못한 오류가 발생했다. 다시 한 번 말해달라."
+                : "어? 뭔가 꼬인 것 같은데... 다시 말해봐.",
         }
       }
 
@@ -478,7 +478,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
       console.log("Cannot save message: no user or supabase not configured")
       return
     }
-    
+
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
@@ -487,7 +487,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
       }
 
       const contentToSave = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
-      
+
       const { data, error } = await supabase
         .from('chat_messages')
         .insert({
@@ -502,7 +502,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
         console.error("Failed to save message to Supabase:", error)
         throw error
       }
-      
+
       console.log("Message saved successfully:", data?.[0]?.id)
     } catch (error) {
       console.error("Failed to save message", error)
@@ -647,10 +647,10 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
                 >
                   {!isUser && (
                     <Avatar
-                      src={character.images.normal}
+                      src={characterImage}
                       alt={character.name}
                       fallback={character.name[0]}
-                      className="size-10 border-2 border-[#FF007F]/30 shrink-0"
+                      className="size-10 border-2 border-[#FF007F]/30 shrink-0 object-cover object-top"
                     />
                   )}
 
