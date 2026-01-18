@@ -50,29 +50,30 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
       <header className="sticky top-0 z-30 bg-black/80 backdrop-blur-md border-b border-white/5 px-4 py-3">
         <div className="max-w-6xl mx-auto flex items-center gap-4">
           <div className="flex-1 flex items-center gap-2">
-            <h1 className="text-xl font-bold bg-gradient-to-r from-[#FF007F] to-rose-600 bg-clip-text text-transparent mr-4 hidden md:block">
-              V-MATE
+            <h1 className="text-xl font-bold bg-gradient-to-r from-[#FF007F] to-rose-600 bg-clip-text text-transparent mr-4">
+              <span className="md:hidden">V-MATE</span>
+              <span className="hidden md:inline">V-MATE</span>
             </h1>
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input 
-                placeholder="캐릭터 검색..." 
+              <Input
+                placeholder="캐릭터 검색..."
                 className="pl-9 bg-neutral-900/90 border-white/10 text-white placeholder:text-neutral-500 focus:bg-neutral-800 transition-all rounded-full h-10"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
           </div>
-          
+
           {user ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-purple-400 to-pink-400 p-[2px] cursor-pointer">
                   <div className="h-full w-full rounded-full bg-black flex items-center justify-center overflow-hidden">
-                    <img 
-                      src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`} 
-                      alt="User" 
-                      className="h-full w-full object-cover" 
+                    <img
+                      src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`}
+                      alt="User"
+                      className="h-full w-full object-cover"
                     />
                   </div>
                 </div>
@@ -105,7 +106,7 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-bold text-white">캐릭터 선택</h2>
           </div>
-          
+
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {filteredCharacters.map((char) => (
               <div
@@ -114,13 +115,13 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
                 className="group relative overflow-hidden rounded-xl border border-white/10 bg-neutral-900/50 hover:bg-neutral-800/50 transition-all cursor-pointer hover:border-[#FF007F]/50 hover:shadow-lg hover:shadow-[#FF007F]/20"
               >
                 <div className="relative aspect-[3/4] overflow-hidden">
-                  <img 
-                    src={char.images.normal} 
+                  <img
+                    src={char.images.normal}
                     alt={char.name}
                     className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
-                  
+
                   <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
                     <h3 className="text-lg font-bold leading-none">{char.name}</h3>
                   </div>
@@ -128,7 +129,7 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
               </div>
             ))}
           </div>
-          
+
           {filteredCharacters.length === 0 && (
             <div className="text-center py-20 text-gray-400">
               검색 결과가 없습니다.

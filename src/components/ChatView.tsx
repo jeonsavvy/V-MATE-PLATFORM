@@ -592,7 +592,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
             </Button>
             <div>
               <h1 className="text-xl font-bold text-white flex items-center gap-2">
-                <span className="text-[#FF007F] font-black tracking-tighter">V-MATE</span> PLATFORM
+                <span className="text-[#FF007F] font-black tracking-tighter">V-MATE</span> <span className="hidden sm:inline">PLATFORM</span>
               </h1>
             </div>
           </div>
