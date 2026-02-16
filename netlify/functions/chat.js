@@ -28,6 +28,11 @@ export const handler = async (event, context) => {
         'Content-Type': 'application/json'
     };
 
+    const MAX_HISTORY_MESSAGES = Number(process.env.GEMINI_HISTORY_MESSAGES || 8);
+    const MAX_PART_CHARS = Number(process.env.GEMINI_MAX_PART_CHARS || 1200);
+    const MODEL_TIMEOUT_MS = Number(process.env.GEMINI_MODEL_TIMEOUT_MS || 14000);
+    const clampText = (value) => String(value ?? '').slice(0, MAX_PART_CHARS);
+
     // OPTIONS 요청 처리 (CORS preflight)
     if (event.httpMethod === 'OPTIONS') {
         return {
@@ -127,15 +132,15 @@ export const handler = async (event, context) => {
         // 운영 비용 최적화: 오래된 대화는 버려서 Context Window를 절약합니다
         // 최근 20개 메시지(10턴: 사용자 10개 + AI 응답 10개)만 포함하여 토큰 비용을 일정 수준으로 유지
         if (messageHistory && Array.isArray(messageHistory)) {
-            // 가장 최근 20개 메시지만 추출 (Sliding Window)
-            const recentHistory = messageHistory.slice(-20);
+            // 가장 최근 N개 메시지만 추출 (Sliding Window)
+            const recentHistory = messageHistory.slice(-MAX_HISTORY_MESSAGES);
 
             recentHistory.forEach(msg => {
                 if (msg.role === 'user') {
                     // 사용자 메시지는 그대로 추가
                     contents.push({
                         role: "user",
-                        parts: [{ text: msg.content }]
+                        parts: [{ text: clampText(msg.content) }]
                     });
                 } else if (msg.role === 'assistant') {
                     // AI 응답은 객체 형태로 저장되어 있으므로 response 필드만 추출
@@ -146,7 +151,7 @@ export const handler = async (event, context) => {
                         : msg.content;
                     contents.push({
                         role: "model",
-                        parts: [{ text: assistantText }]
+                        parts: [{ text: clampText(assistantText) }]
                     });
                 }
             });
@@ -156,7 +161,7 @@ export const handler = async (event, context) => {
         // 가장 마지막에 추가하여 AI가 최신 메시지를 처리하도록 합니다
         contents.push({
             role: "user",
-            parts: [{ text: userMessage }]
+            parts: [{ text: clampText(userMessage) }]
         });
 
         // 모델 선택 로직: messageHistory.length >= 2일 때부터 고성능 모델 사용
@@ -166,13 +171,8 @@ export const handler = async (event, context) => {
         // 2. 심층 대화 (History >= 2): 고성능 추론을 위해 'gemini-3-flash-preview' 사용
         const messageHistoryLength = messageHistory ? messageHistory.length : 0;
         const candidateModels = messageHistoryLength >= 2
-            ? ['gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-2.0-flash']
-            : ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash'];
-
-        // Gemini API 호출
-        // 타임아웃 설정: 25초 (Netlify Function 최대 실행 시간 고려)
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 25000);
+            ? ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-3-flash-preview']
+            : ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest'];
 
         let geminiResponse;
         let geminiData;
@@ -182,6 +182,8 @@ export const handler = async (event, context) => {
             // 서버 로그에만 기록 (클라이언트에는 노출하지 않음)
             console.log(`[V-MATE] Trying model: ${modelName}, Message History Length: ${messageHistoryLength}`);
 
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), MODEL_TIMEOUT_MS);
             try {
                 geminiResponse = await fetch(
                     `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
@@ -196,12 +198,14 @@ export const handler = async (event, context) => {
                             // Gemini API가 확정적으로 JSON 형식으로 응답하도록 강제
                             // 이중 심리 시스템 구현을 위해 {emotion, inner_heart, response} 구조를 일관되게 받기 위함
                             generationConfig: {
-                                responseMimeType: "application/json"
+                                responseMimeType: "application/json",
+                                maxOutputTokens: 1024
                             }
                         }),
                         signal: controller.signal
                     }
                 );
+                clearTimeout(timeoutId);
 
                 try {
                     geminiData = await geminiResponse.json();
@@ -236,34 +240,30 @@ export const handler = async (event, context) => {
                 // 인증/쿼터/기타 오류는 fallback해도 동일할 가능성이 높아 즉시 종료
                 break;
             } catch (fetchError) {
+                clearTimeout(timeoutId);
                 // 타임아웃은 즉시 반환
                 if (fetchError.name === 'AbortError') {
-                    clearTimeout(timeoutId);
-                    return {
-                        statusCode: 504,
-                        headers,
-                        body: JSON.stringify({
-                            error: 'Request timeout. Gemini API did not respond in time.'
-                        })
+                    lastModelError = {
+                        status: 504,
+                        message: `Request timeout on model ${modelName}.`
                     };
+                    continue;
                 }
 
                 lastModelError = {
                     status: 503,
                     message: 'Failed to connect to Gemini API. Please try again later.'
                 };
-                // 네트워크 오류는 동일하게 반복될 가능성이 높아 즉시 중단
-                break;
+                continue;
             }
         }
-        clearTimeout(timeoutId);
 
         if (!geminiResponse || !geminiData) {
             return {
                 statusCode: lastModelError?.status || 503,
                 headers,
                 body: JSON.stringify({
-                    error: lastModelError?.message || 'Failed to connect to Gemini API. Please try again later.'
+                    error: lastModelError?.message || 'All model attempts failed. Please try again later.'
                 })
             };
         }
