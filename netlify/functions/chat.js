@@ -14,7 +14,7 @@
  * 3. Gemini API에 요청 전송 (대화 맥락 포함)
  * 4. Gemini 응답을 클라이언트에 반환
  */
-exports.handler = async (event, context) => {
+export const handler = async (event, context) => {
     // CORS 보안 강화: 허용된 도메인만 접근 가능하도록 제한
     // * 대신 특정 도메인만 허용하여 CSRF 및 무단 접근 방지
     // 환경 변수에서 허용된 Origin을 가져오거나, 현재 요청의 호스트를 사용
@@ -173,12 +173,9 @@ exports.handler = async (event, context) => {
         // 1. 초기 대화 (History < 2): 빠른 응답을 위해 'gemini-flash-latest' (1.5 Flash) 사용
         // 2. 심층 대화 (History >= 2): 고성능 추론을 위해 'gemini-3-flash-preview' 사용
         const messageHistoryLength = messageHistory ? messageHistory.length : 0;
-        const modelName = messageHistoryLength >= 2
-            ? 'gemini-3-flash-preview'
-            : 'gemini-flash-latest';
-
-        // 서버 로그에만 기록 (클라이언트에는 노출하지 않음)
-        console.log(`[V-MATE] Model: ${modelName}, Message History Length: ${messageHistoryLength}`);
+        const candidateModels = messageHistoryLength >= 2
+            ? ['gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-2.0-flash']
+            : ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash'];
 
         // Gemini API 호출
         // 타임아웃 설정: 25초 (Netlify Function 최대 실행 시간 고려)
@@ -186,61 +183,95 @@ exports.handler = async (event, context) => {
         const timeoutId = setTimeout(() => controller.abort(), 25000);
 
         let geminiResponse;
-        try {
-            geminiResponse = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        contents: contents,
-                        // 운영 안정성(Stability) 확보를 위한 Native JSON Mode 적용
-                        // Gemini API가 확정적으로 JSON 형식으로 응답하도록 강제
-                        // 이중 심리 시스템 구현을 위해 {emotion, inner_heart, response} 구조를 일관되게 받기 위함
-                        generationConfig: {
-                            responseMimeType: "application/json"
-                        }
-                    }),
-                    signal: controller.signal
-                }
-            );
-            clearTimeout(timeoutId);
-        } catch (fetchError) {
-            clearTimeout(timeoutId);
-
-            // 타임아웃 오류
-            if (fetchError.name === 'AbortError') {
-                return {
-                    statusCode: 504,
-                    headers,
-                    body: JSON.stringify({
-                        error: 'Request timeout. Gemini API did not respond in time.'
-                    })
-                };
-            }
-
-            // 네트워크 오류
-            return {
-                statusCode: 503,
-                headers,
-                body: JSON.stringify({
-                    error: 'Failed to connect to Gemini API. Please try again later.'
-                })
-            };
-        }
-
-        // Gemini API 응답 파싱
         let geminiData;
-        try {
-            geminiData = await geminiResponse.json();
-        } catch (jsonError) {
+        let lastModelError = null;
+
+        for (const modelName of candidateModels) {
+            // 서버 로그에만 기록 (클라이언트에는 노출하지 않음)
+            console.log(`[V-MATE] Trying model: ${modelName}, Message History Length: ${messageHistoryLength}`);
+
+            try {
+                geminiResponse = await fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            contents: contents,
+                            // 운영 안정성(Stability) 확보를 위한 Native JSON Mode 적용
+                            // Gemini API가 확정적으로 JSON 형식으로 응답하도록 강제
+                            // 이중 심리 시스템 구현을 위해 {emotion, inner_heart, response} 구조를 일관되게 받기 위함
+                            generationConfig: {
+                                responseMimeType: "application/json"
+                            }
+                        }),
+                        signal: controller.signal
+                    }
+                );
+
+                try {
+                    geminiData = await geminiResponse.json();
+                } catch (jsonError) {
+                    lastModelError = {
+                        status: 502,
+                        message: 'Invalid response from Gemini API.'
+                    };
+                    continue;
+                }
+
+                if (geminiResponse.ok && !geminiData.error) {
+                    lastModelError = null;
+                    break;
+                }
+
+                const modelErrorMessage = geminiData?.error?.message || 'Model call failed';
+                const isModelNotFoundError =
+                    geminiResponse.status === 404 ||
+                    modelErrorMessage.includes('not found') ||
+                    modelErrorMessage.includes('is not supported') ||
+                    modelErrorMessage.includes('is not available');
+
+                if (isModelNotFoundError) {
+                    lastModelError = {
+                        status: geminiResponse.status || 500,
+                        message: modelErrorMessage
+                    };
+                    continue;
+                }
+
+                // 인증/쿼터/기타 오류는 fallback해도 동일할 가능성이 높아 즉시 종료
+                break;
+            } catch (fetchError) {
+                // 타임아웃은 즉시 반환
+                if (fetchError.name === 'AbortError') {
+                    clearTimeout(timeoutId);
+                    return {
+                        statusCode: 504,
+                        headers,
+                        body: JSON.stringify({
+                            error: 'Request timeout. Gemini API did not respond in time.'
+                        })
+                    };
+                }
+
+                lastModelError = {
+                    status: 503,
+                    message: 'Failed to connect to Gemini API. Please try again later.'
+                };
+                // 네트워크 오류는 동일하게 반복될 가능성이 높아 즉시 중단
+                break;
+            }
+        }
+        clearTimeout(timeoutId);
+
+        if (!geminiResponse || !geminiData) {
             return {
-                statusCode: 502,
+                statusCode: lastModelError?.status || 503,
                 headers,
                 body: JSON.stringify({
-                    error: 'Invalid response from Gemini API.'
+                    error: lastModelError?.message || 'Failed to connect to Gemini API. Please try again later.'
                 })
             };
         }
