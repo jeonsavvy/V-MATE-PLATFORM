@@ -15,24 +15,16 @@
  * 4. Gemini 응답을 클라이언트에 반환
  */
 export const handler = async (event, context) => {
-    // CORS 보안 강화: 허용된 도메인만 접근 가능하도록 제한
-    // * 대신 특정 도메인만 허용하여 CSRF 및 무단 접근 방지
-    // 환경 변수에서 허용된 Origin을 가져오거나, 현재 요청의 호스트를 사용
-    const prodOrigin = process.env.ALLOWED_ORIGIN || (event.headers.host ? `https://${event.headers.host}` : null);
-    const allowedOrigins = [
-        prodOrigin,                     // 프로덕션 환경 (환경 변수 또는 동적 감지)
-        'http://localhost:8888'         // 로컬 개발 환경
-    ].filter(Boolean); // null/undefined 제거
+    const origin = event.headers?.origin || event.headers?.Origin;
+    const corsOrigin = origin || "*";
 
-    // 요청 Origin 확인
-    const origin = event.headers.origin || event.headers.Origin;
-    const allowedOrigin = allowedOrigins.includes(origin) ? origin : null;
-
-    // CORS 헤더 설정 (보안을 위해 허용된 도메인만 설정)
+    // CORS 헤더 설정 (배포 도메인 변경/커스텀 도메인에도 안전하게 대응)
     const headers = {
-        'Access-Control-Allow-Origin': allowedOrigin || prodOrigin || '*', // 동적으로 현재 도메인 사용
+        'Access-Control-Allow-Origin': corsOrigin,
         'Access-Control-Allow-Headers': 'Content-Type',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Vary': 'Origin',
+        'X-V-MATE-Function': 'chat-v2',
         'Content-Type': 'application/json'
     };
 

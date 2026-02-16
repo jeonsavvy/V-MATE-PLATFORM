@@ -15,10 +15,11 @@
 [functions]
   # Functions 디렉토리
   directory = "netlify/functions"
+  # ESM 함수(export const handler) 호환성 고정
+  node_bundler = "esbuild"
 
 # 리다이렉트 규칙 (SPA 지원)
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
-
