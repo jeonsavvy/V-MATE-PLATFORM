@@ -59,12 +59,9 @@ exports.handler = async (event, context) => {
         // Netlify 대시보드의 Environment variables에서 설정한 값 사용
         const apiKey = process.env.GOOGLE_API_KEY;
 
-        // 디버깅을 위한 로깅
+        // 최소 운영 로그만 남기고 요청/환경 민감 데이터는 로그에서 제외
         console.log('[V-MATE] Function started');
-        console.log('[V-MATE] API Key exists:', !!apiKey);
-        console.log('[V-MATE] API Key length:', apiKey ? apiKey.length : 0);
         console.log('[V-MATE] Request method:', event.httpMethod);
-        console.log('[V-MATE] Request headers:', JSON.stringify(event.headers, null, 2));
 
         if (!apiKey) {
             console.error('[V-MATE] ERROR: GOOGLE_API_KEY is not set');
@@ -80,12 +77,9 @@ exports.handler = async (event, context) => {
         // 요청 본문 파싱 및 검증
         let requestData;
         try {
-            console.log('[V-MATE] Request body:', event.body ? event.body.substring(0, 200) : 'null');
             requestData = JSON.parse(event.body);
-            console.log('[V-MATE] Parsed request data keys:', Object.keys(requestData));
         } catch (parseError) {
             console.error('[V-MATE] Parse error:', parseError.message);
-            console.error('[V-MATE] Body:', event.body);
             return {
                 statusCode: 400,
                 headers,
@@ -297,10 +291,8 @@ exports.handler = async (event, context) => {
 
     } catch (error) {
         // 예상치 못한 서버 오류 처리
-        // 디버깅을 위해 에러 로그 출력
-        console.error('[V-MATE] Unexpected error:', error);
-        console.error('[V-MATE] Error stack:', error.stack);
-        console.error('[V-MATE] Event:', JSON.stringify(event, null, 2));
+        // 민감 이벤트 전체 덤프는 금지하고 최소 정보만 출력
+        console.error('[V-MATE] Unexpected error:', error?.message || error);
 
         // 프로덕션 환경에서는 상세한 에러 정보를 클라이언트에 노출하지 않음
         return {
@@ -314,4 +306,3 @@ exports.handler = async (event, context) => {
         };
     }
 };
-
