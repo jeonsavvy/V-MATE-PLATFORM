@@ -8,14 +8,14 @@
 
 ```mermaid
 graph TD
-    U[User] --> A[React + Vite Client]
-    A -->|POST /.netlify/functions/chat| B[Netlify Function]
-    B --> C[Google Gemini API]
-    C -->|JSON text| B
-    B -->|text(json string)| A
+    U["User"] --> A["React + Vite Client"]
+    A -->|"POST /.netlify/functions/chat"| B["Netlify Function"]
+    B --> C["Google Gemini API"]
+    C -->|"JSON response"| B
+    B -->|"Normalized JSON string"| A
 
-    A --> D[LocalStorage (Guest)]
-    A --> E[Supabase (Logged-in User)]
+    A --> D["LocalStorage (Guest)"]
+    A --> E["Supabase (Logged-in User)"]
 ```
 
 ---
@@ -93,7 +93,7 @@ npm run dev:net
 ## 주의사항 (현재 상태)
 
 - 운영 중 CORS 긴급 완화가 필요하면 `ALLOW_ALL_ORIGINS=true`로 일시 완화할 수 있습니다(기본값은 `false` 권장).
-- README/포폴 문서에서 말하는 “항상 20턴 고정”과 달리, 실제 기본값은 8이며 환경변수로 조정합니다.
+- 대화 히스토리 기본값은 8이며, `GEMINI_HISTORY_MESSAGES`로 조정할 수 있습니다.
 
 ---
 
