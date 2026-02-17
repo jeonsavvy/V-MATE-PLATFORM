@@ -1,121 +1,100 @@
 # V-MATE Platform
 
-<div align="center">
-  <img src="./assets/screenshots/sample_start.png" alt="V-MATE Platform Banner" width="100%" />
-  
-  <br />
-  
-  ![React](https://img.shields.io/badge/React-18.2-20232A?style=flat-square&logo=react&logoColor=61DAFB)
-  ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-007ACC?style=flat-square&logo=typescript&logoColor=white)
-  ![Vite](https://img.shields.io/badge/Vite-5.0-646CFF?style=flat-square&logo=vite&logoColor=white)
-  ![Supabase](https://img.shields.io/badge/Supabase-Database-181818?style=flat-square&logo=supabase&logoColor=3ECF8E)
-  ![Netlify Functions](https://img.shields.io/badge/Netlify-Serverless-00C7B7?style=flat-square&logo=netlify&logoColor=white)
-</div>
-
-<br />
-
-**V-MATE**는 **Google Gemini API**와 **이중 심리 시스템(Dual Psychology)**을 활용한 웹 기반 AI 캐릭터 챗봇 플랫폼입니다. 
-캐릭터의 겉으로 하는 말(Response)과 속마음(Inner Heart)을 분리하여 제공하며, 대화 맥락에 따라 캐릭터의 표정이 실시간으로 변화합니다.
+캐릭터의 **겉말(response)** 과 **속마음(inner_heart)** 을 분리해 보여주는 웹 기반 AI 캐릭터 채팅 프로젝트입니다.
 
 ---
 
-## 🛠 Features
-
-*   **Dual Psychology Engine**: 캐릭터의 대사를 '대화(Talk)'와 '속마음(Heart)'으로 분리하여 출력
-*   **Dynamic Expression**: 감정 분석 결과(`joy`, `sadness`, `shame`, etc)에 따라 캐릭터 일러스트 자동 변경
-*   **Token Optimization**: 최근 20턴의 대화만 전송(Sliding Window)하여 API 비용 절감 및 속도 최적화
-*   **Hybrid Storage**:
-    *   **Guest**: 로그인 없이 LocalStorage에 대화 자동 저장
-    *   **User**: Supabase Auth 로그인 시 DB 영구 저장 및 동기화
-*   **Secure Architecture**: Serverless Function을 통한 API Key 은닉 및 요청 프록시
-
----
-
-## 🏗 Architecture
+## 핵심 흐름
 
 ```mermaid
 graph TD
-    User([User]) -->|Input| Client[React Client]
-    
-    subgraph "Serverless Layer (Netlify)"
-        Client -->|POST /api/chat| Function[Chat Function]
-        Function -->|Prompt| Gemini[🧠 Google Gemini API]
-    end
-    
-    Gemini --"JSON {heart, response, emotion}"--> Function
-    Function --"Sanitized Data"--> Client
-    
-    Client -->|Persist| DB[(Supabase Cloud)]
+    U[User] --> A[React + Vite Client]
+    A -->|POST /.netlify/functions/chat| B[Netlify Function]
+    B --> C[Google Gemini API]
+    C -->|JSON text| B
+    B -->|text(json string)| A
+
+    A --> D[LocalStorage (Guest)]
+    A --> E[Supabase (Logged-in User)]
 ```
 
 ---
 
-## 📦 Tech Stack
+## 현재 구현 기능
 
-| Category | Technology |
-| :--- | :--- |
-| **Frontend** | React 18, TypeScript, Tailwind CSS, Shadcn/UI |
-| **Backend** | Netlify Functions (Node.js) |
-| **Database** | Supabase (PostgreSQL, Auth) |
-| **AI Model** | Google Gemini API (via JSON Mode) |
-| **Deployment** | Netlify |
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-*   Node.js 18+
-*   NPM or Yarn
-*   Google Gemini API Key
-*   Supabase Project
-
-### Installation
-
-1.  **Repository Clone**
-    ```bash
-    git clone https://github.com/jeonsavvy/V-MATE-PLATFORM.git
-    cd V-MATE-PLATFORM
-    ```
-
-2.  **Dependencies Install**
-    ```bash
-    npm install
-    ```
-
-3.  **Environment Setup**
-    프로젝트 루트에 `.env` 파일을 생성합니다.
-    ```env
-    # Client (Vite)
-    VITE_SUPABASE_URL=your_supabase_project_url
-    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-
-    # Server (Netlify Functions)
-    GOOGLE_API_KEY=your_google_ai_studio_key
-    ```
-    > **Note**: `GOOGLE_API_KEY`는 클라이언트 번들링에 포함되지 않으며, 로컬 서버(Netlify Dev) 실행 시에만 로드됩니다.
-
-4.  **Database Initializtion**
-    Supabase SQL Editor에서 [`supabase_schema.sql`](./supabase_schema.sql) 스크립트를 실행하여 테이블을 생성합니다.
-
-5.  **Run Development Server**
-    API 프록시 실행을 위해 **Netlify Dev** 명령어를 사용하는 것을 권장합니다.
-    ```bash
-    # Frontend + Netlify Function 동시 실행
-    npm run dev:net
-    ```
+- **Dual Psychology 출력**: `emotion`, `inner_heart`, `response`
+- **표정 변경**: 응답 emotion 값에 따라 캐릭터 이미지 변경
+- **하이브리드 저장**:
+  - 비로그인: LocalStorage
+  - 로그인: Supabase `chat_messages` 테이블
+- **서버리스 프록시**: Gemini API Key는 Netlify Function에서만 사용
+- **모델 fallback**: 여러 Gemini 모델 후보를 순차 시도
+- **JSON Mode 요청**: `responseMimeType: "application/json"`
 
 ---
 
-## 📂 Directory Structure
+## 빠른 시작
+
+### 1) 의존성 설치
 
 ```bash
-├── netlify/functions/   # Serverless API Logic
-├── src/
-│   ├── components/      # React UI Components
-│   ├── lib/             # Utilities & Supabase Client
-│   ├── assets/          # Images & Static Files
-│   └── App.tsx          # Main Entry
-├── supabase_schema.sql  # Database SQL Script
+npm install
+```
+
+### 2) 환경 변수
+
+프로젝트 루트 `.env` 파일:
+
+```env
+# Client
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...
+
+# Netlify Function
+GOOGLE_API_KEY=...
+
+# Optional
+GEMINI_HISTORY_MESSAGES=8
+GEMINI_MAX_PART_CHARS=1200
+GEMINI_MODEL_TIMEOUT_MS=14000
+```
+
+### 3) DB 초기화
+
+Supabase SQL Editor에서 `supabase_schema.sql` 실행
+
+### 4) 로컬 실행
+
+```bash
+npm run dev:net
+```
+
+> `dev:net`은 Vite + Netlify Function을 같이 실행하기 위해 권장됩니다.
+
+---
+
+## 설정 메모
+
+- 기본 히스토리 윈도우: `GEMINI_HISTORY_MESSAGES` (기본 8)
+- 클라이언트에서 service role key 감지 시 Supabase를 비활성화하고 placeholder client로 대체
+- API 실패/파싱 실패 시 캐릭터별 fallback 대사 출력
+
+---
+
+## 주의사항 (현재 상태)
+
+- CORS는 요청 `Origin`을 반사하거나, origin이 없으면 `*`를 사용합니다.
+- README/포폴 문서에서 말하는 “항상 20턴 고정”과 달리, 실제 기본값은 8이며 환경변수로 조정합니다.
+
+---
+
+## 디렉터리
+
+```bash
+├── netlify/functions/chat.js
+├── src/components/
+├── src/lib/
+├── supabase_schema.sql
+├── netlify.toml
 └── README.md
 ```
