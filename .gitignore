@@ -37,3 +37,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+build
+.next
+__pycache__
+Thumbs.db
+venv
+.venv
