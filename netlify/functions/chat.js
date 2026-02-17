@@ -1,44 +1,171 @@
 /**
  * Netlify Serverless Function: Gemini API 중계 서버
- * 
- * 이 함수는 클라이언트와 Google Gemini API 사이의 프록시 역할을 합니다.
- * 
- * 보안 아키텍처:
- * - API 키는 환경 변수(process.env.GOOGLE_API_KEY)에서만 가져옵니다
- * - 클라이언트는 API 키를 직접 알 수 없습니다
- * - 모든 Gemini API 호출은 이 서버 사이드 함수를 통해 이루어집니다
- * 
- * 동작 흐름:
- * 1. 클라이언트로부터 POST 요청 수신 (시스템 프롬프트, 사용자 메시지, 대화 히스토리)
- * 2. 환경 변수에서 API 키 로드
- * 3. Gemini API에 요청 전송 (대화 맥락 포함)
- * 4. Gemini 응답을 클라이언트에 반환
+ * - API key 은닉
+ * - Origin allowlist 기반 CORS
+ * - Origin/IP 기반 rate limit
+ * - Gemini 응답 JSON 정규화
  */
-export const handler = async (event, context) => {
-    const origin = event.headers?.origin || event.headers?.Origin;
-    const corsOrigin = origin || "*";
 
-    // CORS 헤더 설정 (배포 도메인 변경/커스텀 도메인에도 안전하게 대응)
-    const headers = {
-        'Access-Control-Allow-Origin': corsOrigin,
+const rateLimitStore = new Map();
+
+const parseAllowedOrigins = () => {
+    const raw = (process.env.ALLOWED_ORIGINS || '').trim();
+    if (!raw) {
+        return new Set([
+            'http://localhost:5173',
+            'http://127.0.0.1:5173',
+            'http://localhost:8888',
+            'http://127.0.0.1:8888',
+        ]);
+    }
+
+    return new Set(
+        raw
+            .split(',')
+            .map((origin) => origin.trim().replace(/\/+$/, ''))
+            .filter(Boolean)
+    );
+};
+
+const normalizeOrigin = (origin) => String(origin || '').trim().replace(/\/+$/, '');
+
+const shouldAllowAllOrigins = () => {
+    return String(process.env.ALLOW_ALL_ORIGINS || 'false').toLowerCase() === 'true';
+};
+
+const isOriginAllowed = (origin) => {
+    if (shouldAllowAllOrigins()) {
+        return true;
+    }
+
+    if (!origin) {
+        // 서버 간 호출/health check 같은 non-browser 호출 허용
+        return true;
+    }
+
+    const normalized = normalizeOrigin(origin);
+    const allowlist = parseAllowedOrigins();
+    return allowlist.has(normalized);
+};
+
+const getClientKey = (event, origin) => {
+    const forwardedFor = event.headers?.['x-forwarded-for'] || event.headers?.['X-Forwarded-For'];
+    const ip = String(forwardedFor || '').split(',')[0].trim();
+    if (ip) return `ip:${ip}`;
+
+    if (origin) return `origin:${normalizeOrigin(origin)}`;
+    return 'anonymous';
+};
+
+const getRateLimitConfig = () => {
+    return {
+        windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 60000),
+        maxRequests: Number(process.env.RATE_LIMIT_MAX_REQUESTS || 30),
+    };
+};
+
+const checkRateLimit = (key) => {
+    const { windowMs, maxRequests } = getRateLimitConfig();
+    const now = Date.now();
+
+    const existing = rateLimitStore.get(key);
+    if (!existing || now > existing.resetAt) {
+        const next = {
+            count: 1,
+            resetAt: now + windowMs,
+        };
+        rateLimitStore.set(key, next);
+        return { allowed: true, remaining: maxRequests - 1, retryAfterMs: windowMs };
+    }
+
+    if (existing.count >= maxRequests) {
+        return {
+            allowed: false,
+            remaining: 0,
+            retryAfterMs: Math.max(0, existing.resetAt - now),
+        };
+    }
+
+    existing.count += 1;
+    rateLimitStore.set(key, existing);
+    return {
+        allowed: true,
+        remaining: Math.max(0, maxRequests - existing.count),
+        retryAfterMs: Math.max(0, existing.resetAt - now),
+    };
+};
+
+const buildHeaders = (originAllowed, origin) => {
+    const resolvedOrigin = originAllowed ? (origin || '*') : 'null';
+
+    return {
+        'Access-Control-Allow-Origin': resolvedOrigin,
         'Access-Control-Allow-Headers': 'Content-Type',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
         'Vary': 'Origin',
-        'X-V-MATE-Function': 'chat-v2',
-        'Content-Type': 'application/json'
+        'X-V-MATE-Function': 'chat-v3',
+        'Content-Type': 'application/json',
+    };
+};
+
+const normalizeAssistantPayload = (rawText) => {
+    const safeFallback = {
+        emotion: 'normal',
+        inner_heart: '',
+        response: '잠시 응답 형식이 불안정했어요. 한 번만 다시 말해줘.',
     };
 
-    const MAX_HISTORY_MESSAGES = Number(process.env.GEMINI_HISTORY_MESSAGES || 8);
-    const MAX_PART_CHARS = Number(process.env.GEMINI_MAX_PART_CHARS || 1200);
-    const MODEL_TIMEOUT_MS = Number(process.env.GEMINI_MODEL_TIMEOUT_MS || 14000);
-    const clampText = (value) => String(value ?? '').slice(0, MAX_PART_CHARS);
+    if (!rawText || typeof rawText !== 'string') {
+        return safeFallback;
+    }
+
+    const jsonStr = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+
+    let parsed;
+    try {
+        parsed = JSON.parse(jsonStr);
+    } catch {
+        return safeFallback;
+    }
+
+    const emotion = typeof parsed?.emotion === 'string' && parsed.emotion.trim()
+        ? parsed.emotion.trim()
+        : 'normal';
+
+    const innerHeart = typeof parsed?.inner_heart === 'string'
+        ? parsed.inner_heart.trim()
+        : '';
+
+    const response = typeof parsed?.response === 'string' && parsed.response.trim()
+        ? parsed.response.trim()
+        : safeFallback.response;
+
+    return {
+        emotion,
+        inner_heart: innerHeart,
+        response,
+    };
+};
+
+export const handler = async (event, context) => {
+    const origin = event.headers?.origin || event.headers?.Origin;
+    const originAllowed = isOriginAllowed(origin);
+    const headers = buildHeaders(originAllowed, origin);
 
     // OPTIONS 요청 처리 (CORS preflight)
     if (event.httpMethod === 'OPTIONS') {
+        if (!originAllowed) {
+            return {
+                statusCode: 403,
+                headers,
+                body: JSON.stringify({ error: 'Origin is not allowed.' }),
+            };
+        }
+
         return {
             statusCode: 200,
             headers,
-            body: ''
+            body: '',
         };
     }
 
@@ -47,27 +174,43 @@ export const handler = async (event, context) => {
         return {
             statusCode: 405,
             headers,
-            body: JSON.stringify({ error: 'Method not allowed' })
+            body: JSON.stringify({ error: 'Method not allowed' }),
+        };
+    }
+
+    if (!originAllowed) {
+        return {
+            statusCode: 403,
+            headers,
+            body: JSON.stringify({ error: 'Origin is not allowed.' }),
+        };
+    }
+
+    const rateKey = getClientKey(event, origin);
+    const rateStatus = checkRateLimit(rateKey);
+    if (!rateStatus.allowed) {
+        return {
+            statusCode: 429,
+            headers: {
+                ...headers,
+                'Retry-After': String(Math.ceil(rateStatus.retryAfterMs / 1000)),
+            },
+            body: JSON.stringify({
+                error: 'Too many requests. Please try again later.',
+            }),
         };
     }
 
     try {
-        // 환경 변수에서 API 키 가져오기
-        // Netlify 대시보드의 Environment variables에서 설정한 값 사용
         const apiKey = process.env.GOOGLE_API_KEY;
 
-        // 최소 운영 로그만 남기고 요청/환경 민감 데이터는 로그에서 제외
-        console.log('[V-MATE] Function started');
-        console.log('[V-MATE] Request method:', event.httpMethod);
-
         if (!apiKey) {
-            console.error('[V-MATE] ERROR: GOOGLE_API_KEY is not set');
             return {
                 statusCode: 500,
                 headers,
                 body: JSON.stringify({
-                    error: 'API key not configured. Please set GOOGLE_API_KEY in Netlify environment variables.'
-                })
+                    error: 'API key not configured. Please set GOOGLE_API_KEY in Netlify environment variables.',
+                }),
             };
         }
 
@@ -76,99 +219,63 @@ export const handler = async (event, context) => {
         try {
             requestData = JSON.parse(event.body);
         } catch (parseError) {
-            console.error('[V-MATE] Parse error:', parseError.message);
             return {
                 statusCode: 400,
                 headers,
                 body: JSON.stringify({
                     error: 'Invalid request body. Expected JSON format.',
-                    details: parseError.message
-                })
+                    details: parseError.message,
+                }),
             };
         }
 
         const { systemPrompt, userMessage, messageHistory } = requestData;
 
-        // 필수 파라미터 검증
         if (!userMessage || typeof userMessage !== 'string' || userMessage.trim().length === 0) {
             return {
                 statusCode: 400,
                 headers,
                 body: JSON.stringify({
-                    error: 'userMessage is required and must be a non-empty string.'
-                })
+                    error: 'userMessage is required and must be a non-empty string.',
+                }),
             };
         }
 
-        // Gemini API 요청 구성
-        // 
-        // [기획 의도: 이중 심리 시스템 구현을 위한 프롬프트 구조]
-        // Gemini API는 대화 맥락을 유지하기 위해 전체 대화 히스토리를 배열 형태로 받습니다.
-        // 각 메시지는 role(user/model)과 parts(텍스트 내용)로 구성됩니다.
-        // 
-        // 구조:
-        // 1. 시스템 프롬프트 (캐릭터 설정) - 첫 메시지로 전달하여 AI의 역할을 정의
-        //    - 이중 심리 시스템(INNER_HEART와 RESPONSE 분리)을 설명하는 핵심 프롬프트 포함
-        //    - 각 캐릭터의 성격, 말투, 감정 트리거 등을 정의
-        // 2. 대화 히스토리 (이전 대화들) - 컨텍스트 유지를 위해 순서대로 추가
-        // 3. 현재 사용자 메시지 - 가장 마지막에 추가
+        const MAX_HISTORY_MESSAGES = Number(process.env.GEMINI_HISTORY_MESSAGES || 8);
+        const MAX_PART_CHARS = Number(process.env.GEMINI_MAX_PART_CHARS || 1200);
+        const MODEL_TIMEOUT_MS = Number(process.env.GEMINI_MODEL_TIMEOUT_MS || 14000);
+        const clampText = (value) => String(value ?? '').slice(0, MAX_PART_CHARS);
+
         const contents = [];
 
-        // 시스템 프롬프트를 첫 메시지로 추가
-        // 이렇게 하면 AI가 캐릭터의 성격, 말투, 이중 심리 시스템(속마음/실제 말 분리)을 이해합니다
         if (systemPrompt) {
             contents.push({
-                role: "user",
-                parts: [{ text: systemPrompt }]
+                role: 'user',
+                parts: [{ text: systemPrompt }],
             });
-            // AI가 프롬프트를 이해했다는 확인 응답 (Gemini API 형식 요구사항)
             contents.push({
-                role: "model",
-                parts: [{ text: "Understood. I will respond in the specified JSON format." }]
+                role: 'model',
+                parts: [{ text: 'Understood. I will respond in the specified JSON format.' }],
             });
         }
 
-        // 대화 히스토리 추가 (Sliding Window 방식 적용)
-        // 운영 비용 최적화: 오래된 대화는 버려서 Context Window를 절약합니다
-        // 최근 20개 메시지(10턴: 사용자 10개 + AI 응답 10개)만 포함하여 토큰 비용을 일정 수준으로 유지
         if (messageHistory && Array.isArray(messageHistory)) {
-            // 가장 최근 N개 메시지만 추출 (Sliding Window)
             const recentHistory = messageHistory.slice(-MAX_HISTORY_MESSAGES);
-
-            recentHistory.forEach(msg => {
+            recentHistory.forEach((msg) => {
                 if (msg.role === 'user') {
-                    // 사용자 메시지는 그대로 추가
-                    contents.push({
-                        role: "user",
-                        parts: [{ text: clampText(msg.content) }]
-                    });
+                    contents.push({ role: 'user', parts: [{ text: clampText(msg.content) }] });
                 } else if (msg.role === 'assistant') {
-                    // AI 응답은 객체 형태로 저장되어 있으므로 response 필드만 추출
-                    // [이중 심리 시스템 구현] inner_heart는 UI에서만 표시되므로 API에는 전달하지 않음
-                    // API에는 실제 말(response)만 전달하여 대화 맥락을 자연스럽게 유지
-                    const assistantText = typeof msg.content === 'object'
-                        ? msg.content.response
-                        : msg.content;
-                    contents.push({
-                        role: "model",
-                        parts: [{ text: clampText(assistantText) }]
-                    });
+                    const assistantText = typeof msg.content === 'object' ? msg.content.response : msg.content;
+                    contents.push({ role: 'model', parts: [{ text: clampText(assistantText) }] });
                 }
             });
         }
 
-        // 현재 사용자 메시지 추가
-        // 가장 마지막에 추가하여 AI가 최신 메시지를 처리하도록 합니다
         contents.push({
-            role: "user",
-            parts: [{ text: clampText(userMessage) }]
+            role: 'user',
+            parts: [{ text: clampText(userMessage) }],
         });
 
-        // 모델 선택 로직: messageHistory.length >= 2일 때부터 고성능 모델 사용
-        // messageHistory는 이전 대화들을 담고 있으므로, 길이가 2 이상이면 최소 2번째 질문부터 고성능 모델 사용
-        // 모델 선택 로직 (Dynamic Model Switching):
-        // 1. 초기 대화 (History < 2): 빠른 응답을 위해 'gemini-flash-latest' (1.5 Flash) 사용
-        // 2. 심층 대화 (History >= 2): 고성능 추론을 위해 'gemini-3-flash-preview' 사용
         const messageHistoryLength = messageHistory ? messageHistory.length : 0;
         const candidateModels = messageHistoryLength >= 2
             ? ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-3-flash-preview']
@@ -179,40 +286,34 @@ export const handler = async (event, context) => {
         let lastModelError = null;
 
         for (const modelName of candidateModels) {
-            // 서버 로그에만 기록 (클라이언트에는 노출하지 않음)
-            console.log(`[V-MATE] Trying model: ${modelName}, Message History Length: ${messageHistoryLength}`);
-
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), MODEL_TIMEOUT_MS);
+
             try {
                 geminiResponse = await fetch(
                     `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
                     {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
+                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            contents: contents,
-                            // 운영 안정성(Stability) 확보를 위한 Native JSON Mode 적용
-                            // Gemini API가 확정적으로 JSON 형식으로 응답하도록 강제
-                            // 이중 심리 시스템 구현을 위해 {emotion, inner_heart, response} 구조를 일관되게 받기 위함
+                            contents,
                             generationConfig: {
-                                responseMimeType: "application/json",
-                                maxOutputTokens: 1024
-                            }
+                                responseMimeType: 'application/json',
+                                maxOutputTokens: 1024,
+                            },
                         }),
-                        signal: controller.signal
+                        signal: controller.signal,
                     }
                 );
+
                 clearTimeout(timeoutId);
 
                 try {
                     geminiData = await geminiResponse.json();
-                } catch (jsonError) {
+                } catch {
                     lastModelError = {
                         status: 502,
-                        message: 'Invalid response from Gemini API.'
+                        message: 'Invalid response from Gemini API.',
                     };
                     continue;
                 }
@@ -232,27 +333,26 @@ export const handler = async (event, context) => {
                 if (isModelNotFoundError) {
                     lastModelError = {
                         status: geminiResponse.status || 500,
-                        message: modelErrorMessage
+                        message: modelErrorMessage,
                     };
                     continue;
                 }
 
-                // 인증/쿼터/기타 오류는 fallback해도 동일할 가능성이 높아 즉시 종료
                 break;
             } catch (fetchError) {
                 clearTimeout(timeoutId);
-                // 타임아웃은 즉시 반환
+
                 if (fetchError.name === 'AbortError') {
                     lastModelError = {
                         status: 504,
-                        message: `Request timeout on model ${modelName}.`
+                        message: `Request timeout on model ${modelName}.`,
                     };
                     continue;
                 }
 
                 lastModelError = {
                     status: 503,
-                    message: 'Failed to connect to Gemini API. Please try again later.'
+                    message: 'Failed to connect to Gemini API. Please try again later.',
                 };
                 continue;
             }
@@ -263,17 +363,15 @@ export const handler = async (event, context) => {
                 statusCode: lastModelError?.status || 503,
                 headers,
                 body: JSON.stringify({
-                    error: lastModelError?.message || 'All model attempts failed. Please try again later.'
-                })
+                    error: lastModelError?.message || 'All model attempts failed. Please try again later.',
+                }),
             };
         }
 
-        // Gemini API 에러 처리
         if (!geminiResponse.ok || geminiData.error) {
             let errorMessage = 'Failed to get response from Gemini API';
 
             if (geminiData.error) {
-                // API 키 관련 오류
                 if (geminiData.error.message?.includes('API_KEY') || geminiData.error.message?.includes('API key')) {
                     errorMessage = 'Invalid or expired API key. Please check your GOOGLE_API_KEY in Netlify environment variables.';
                 } else if (geminiData.error.message?.includes('quota') || geminiData.error.message?.includes('Quota')) {
@@ -286,46 +384,37 @@ export const handler = async (event, context) => {
             return {
                 statusCode: geminiResponse.status || 500,
                 headers,
-                body: JSON.stringify({
-                    error: errorMessage
-                })
+                body: JSON.stringify({ error: errorMessage }),
             };
         }
 
-        // 응답 데이터 검증
         if (!geminiData.candidates || !geminiData.candidates[0] || !geminiData.candidates[0].content?.parts?.[0]?.text) {
             return {
                 statusCode: 502,
                 headers,
-                body: JSON.stringify({
-                    error: 'Invalid response format from Gemini API.'
-                })
+                body: JSON.stringify({ error: 'Invalid response format from Gemini API.' }),
             };
         }
 
-        // 성공 응답 반환
+        const normalizedPayload = normalizeAssistantPayload(geminiData.candidates[0].content.parts[0].text);
+
         return {
             statusCode: 200,
             headers,
             body: JSON.stringify({
-                text: geminiData.candidates[0].content.parts[0].text
-            })
+                text: JSON.stringify(normalizedPayload),
+            }),
         };
-
     } catch (error) {
-        // 예상치 못한 서버 오류 처리
-        // 민감 이벤트 전체 덤프는 금지하고 최소 정보만 출력
         console.error('[V-MATE] Unexpected error:', error?.message || error);
 
-        // 프로덕션 환경에서는 상세한 에러 정보를 클라이언트에 노출하지 않음
         return {
             statusCode: 500,
             headers,
             body: JSON.stringify({
                 error: 'Internal server error. Please try again later.',
-                // 디버깅을 위해 개발 환경에서는 에러 메시지 포함
-                ...(process.env.NETLIFY_DEV && { details: error.message })
-            })
+                ...(process.env.NETLIFY_DEV && { details: error.message }),
+            }),
         };
     }
 };

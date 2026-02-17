@@ -30,6 +30,9 @@ graph TD
 - **서버리스 프록시**: Gemini API Key는 Netlify Function에서만 사용
 - **모델 fallback**: 여러 Gemini 모델 후보를 순차 시도
 - **JSON Mode 요청**: `responseMimeType: "application/json"`
+- **Origin allowlist CORS**: `ALLOWED_ORIGINS` 기반 허용
+- **요청 제한**: Origin/IP 키 기반 rate limit 적용
+- **응답 정규화**: 서버에서 `emotion / inner_heart / response` 스키마 보정 후 반환
 
 ---
 
@@ -57,6 +60,10 @@ GOOGLE_API_KEY=...
 GEMINI_HISTORY_MESSAGES=8
 GEMINI_MAX_PART_CHARS=1200
 GEMINI_MODEL_TIMEOUT_MS=14000
+ALLOWED_ORIGINS=http://localhost:5173,https://your-domain.com
+ALLOW_ALL_ORIGINS=false
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX_REQUESTS=30
 ```
 
 ### 3) DB 초기화
@@ -76,6 +83,8 @@ npm run dev:net
 ## 설정 메모
 
 - 기본 히스토리 윈도우: `GEMINI_HISTORY_MESSAGES` (기본 8)
+- 기본 Rate Limit: 60초당 30회(`RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX_REQUESTS`)
+- CORS는 `ALLOWED_ORIGINS`에 등록된 Origin만 허용
 - 클라이언트에서 service role key 감지 시 Supabase를 비활성화하고 placeholder client로 대체
 - API 실패/파싱 실패 시 캐릭터별 fallback 대사 출력
 
@@ -83,7 +92,7 @@ npm run dev:net
 
 ## 주의사항 (현재 상태)
 
-- CORS는 요청 `Origin`을 반사하거나, origin이 없으면 `*`를 사용합니다.
+- 운영 중 CORS 긴급 완화가 필요하면 `ALLOW_ALL_ORIGINS=true`로 일시 완화할 수 있습니다(기본값은 `false` 권장).
 - README/포폴 문서에서 말하는 “항상 20턴 고정”과 달리, 실제 기본값은 8이며 환경변수로 조정합니다.
 
 ---
