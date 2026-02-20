@@ -276,22 +276,20 @@ export const handler = async (event, context) => {
             parts: [{ text: clampText(userMessage) }],
         });
 
-        const messageHistoryLength = messageHistory ? messageHistory.length : 0;
-        const candidateModels = messageHistoryLength >= 2
-            ? ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-3-flash-preview']
-            : ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest'];
+        const MODEL_NAME = 'gemini-3-flash-preview';
+        const MAX_MODEL_ATTEMPTS = 2; // 첫 호출 + 동일 모델 1회 재시도
 
         let geminiResponse;
         let geminiData;
         let lastModelError = null;
 
-        for (const modelName of candidateModels) {
+        for (let attempt = 1; attempt <= MAX_MODEL_ATTEMPTS; attempt += 1) {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), MODEL_TIMEOUT_MS);
 
             try {
                 geminiResponse = await fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
+                    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`,
                     {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -315,7 +313,10 @@ export const handler = async (event, context) => {
                         status: 502,
                         message: 'Invalid response from Gemini API.',
                     };
-                    continue;
+                    if (attempt < MAX_MODEL_ATTEMPTS) {
+                        continue;
+                    }
+                    break;
                 }
 
                 if (geminiResponse.ok && !geminiData.error) {
@@ -324,17 +325,22 @@ export const handler = async (event, context) => {
                 }
 
                 const modelErrorMessage = geminiData?.error?.message || 'Model call failed';
-                const isModelNotFoundError =
-                    geminiResponse.status === 404 ||
-                    modelErrorMessage.includes('not found') ||
-                    modelErrorMessage.includes('is not supported') ||
-                    modelErrorMessage.includes('is not available');
+                const retryableStatuses = [429, 500, 502, 503, 504];
+                const normalizedErrorMessage = String(modelErrorMessage).toLowerCase();
+                const isRetryableMessage =
+                    normalizedErrorMessage.includes('temporarily unavailable') ||
+                    normalizedErrorMessage.includes('timeout') ||
+                    normalizedErrorMessage.includes('try again') ||
+                    normalizedErrorMessage.includes('rate limit') ||
+                    normalizedErrorMessage.includes('overloaded');
+                const isRetryableStatus = retryableStatuses.includes(geminiResponse.status);
 
-                if (isModelNotFoundError) {
-                    lastModelError = {
-                        status: geminiResponse.status || 500,
-                        message: modelErrorMessage,
-                    };
+                lastModelError = {
+                    status: geminiResponse.status || 500,
+                    message: modelErrorMessage,
+                };
+
+                if (attempt < MAX_MODEL_ATTEMPTS && (isRetryableStatus || isRetryableMessage)) {
                     continue;
                 }
 
@@ -342,19 +348,22 @@ export const handler = async (event, context) => {
             } catch (fetchError) {
                 clearTimeout(timeoutId);
 
-                if (fetchError.name === 'AbortError') {
+                if (fetchError?.name === 'AbortError') {
                     lastModelError = {
                         status: 504,
-                        message: `Request timeout on model ${modelName}.`,
+                        message: `Request timeout on model ${MODEL_NAME}.`,
                     };
-                    continue;
+                } else {
+                    lastModelError = {
+                        status: 503,
+                        message: 'Failed to connect to Gemini API. Please try again later.',
+                    };
                 }
 
-                lastModelError = {
-                    status: 503,
-                    message: 'Failed to connect to Gemini API. Please try again later.',
-                };
-                continue;
+                if (attempt < MAX_MODEL_ATTEMPTS) {
+                    continue;
+                }
+                break;
             }
         }
 
@@ -363,7 +372,7 @@ export const handler = async (event, context) => {
                 statusCode: lastModelError?.status || 503,
                 headers,
                 body: JSON.stringify({
-                    error: lastModelError?.message || 'All model attempts failed. Please try again later.',
+                    error: lastModelError?.message || 'Model call failed after retry. Please try again later.',
                 }),
             };
         }

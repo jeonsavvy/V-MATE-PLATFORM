@@ -28,11 +28,13 @@ graph TD
   - 비로그인: LocalStorage
   - 로그인: Supabase `chat_messages` 테이블
 - **서버리스 프록시**: Gemini API Key는 Netlify Function에서만 사용
-- **모델 fallback**: 여러 Gemini 모델 후보를 순차 시도
+- **모델 고정**: `gemini-3-flash-preview` 단일 모델 사용
+- **동일 모델 재시도**: 일시 오류(타임아웃/429/5xx) 시 1회 재시도
 - **JSON Mode 요청**: `responseMimeType: "application/json"`
 - **Origin allowlist CORS**: `ALLOWED_ORIGINS` 기반 허용
 - **요청 제한**: Origin/IP 키 기반 rate limit 적용
 - **응답 정규화**: 서버에서 `emotion / inner_heart / response` 스키마 보정 후 반환
+- **프롬프트 모듈 분리**: `src/lib/prompts/*`에서 캐릭터별 시스템 프롬프트 관리
 
 ---
 
@@ -83,10 +85,24 @@ npm run dev:net
 ## 설정 메모
 
 - 기본 히스토리 윈도우: `GEMINI_HISTORY_MESSAGES` (기본 8)
+- 모델: `gemini-3-flash-preview` 고정 (모델 fallback 없음)
+- 동일 모델 재시도: 최대 1회
 - 기본 Rate Limit: 60초당 30회(`RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX_REQUESTS`)
 - CORS는 `ALLOWED_ORIGINS`에 등록된 Origin만 허용
 - 클라이언트에서 service role key 감지 시 Supabase를 비활성화하고 placeholder client로 대체
-- API 실패/파싱 실패 시 캐릭터별 fallback 대사 출력
+- API 실패/파싱 실패 시 캐릭터별 fallback 대사 출력(클라이언트 레벨 유지)
+
+---
+
+## 캐릭터 프롬프트 수정 가이드
+
+- 공통 규칙: `src/lib/prompts/common.ts`
+- 캐릭터별 규칙:
+  - `src/lib/prompts/mika.ts`
+  - `src/lib/prompts/alice.ts`
+  - `src/lib/prompts/kael.ts`
+- `src/lib/data.ts`에서는 캐릭터 메타/이미지/인사말만 유지하고, 시스템 프롬프트는 모듈 import로 조합합니다.
+- 출력 계약은 기존과 동일하게 `emotion`, `inner_heart`, `response` JSON 스키마를 사용합니다.
 
 ---
 
@@ -103,6 +119,12 @@ npm run dev:net
 ├── netlify/functions/chat.js
 ├── src/components/
 ├── src/lib/
+│   └── prompts/
+│       ├── common.ts
+│       ├── mika.ts
+│       ├── alice.ts
+│       ├── kael.ts
+│       └── index.ts
 ├── supabase_schema.sql
 ├── netlify.toml
 └── README.md
