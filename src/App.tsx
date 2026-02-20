@@ -1,13 +1,12 @@
-import { useState, useEffect, Suspense, lazy } from "react"
+import { useState, useEffect } from "react"
+import { ChatView } from "@/components/ChatView"
+import { Home } from "@/components/Home"
+import { AuthDialog } from "@/components/AuthDialog"
 import { Toaster } from "@/components/ui/sonner"
 import { CHARACTERS } from "@/lib/data"
 import { User } from "@supabase/supabase-js"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import type { Character } from "@/lib/data"
-
-const Home = lazy(() => import("@/components/Home").then((module) => ({ default: module.Home })))
-const ChatView = lazy(() => import("@/components/ChatView").then((module) => ({ default: module.ChatView })))
-const AuthDialog = lazy(() => import("@/components/AuthDialog").then((module) => ({ default: module.AuthDialog })))
 
 function App() {
   const [currentView, setCurrentView] = useState<"home" | "chat">("home")
@@ -53,32 +52,30 @@ function App() {
 
   return (
     <div className="min-h-dvh w-full overflow-x-hidden bg-[#e7dfd3]">
-      <Suspense fallback={<div className="flex min-h-dvh items-center justify-center text-sm text-[#6f695e]">불러오는 중...</div>}>
-        {currentView === "home" ? (
-          <Home
-            onCharacterSelect={handleCharacterSelect}
-            user={user}
-            onAuthRequest={() => setIsAuthDialogOpen(true)}
-          />
-        ) : (
-          character && (
-            <ChatView
-              character={character}
-              onCharacterChange={setCurrentCharId}
-              user={user}
-              onBack={handleBackToHome}
-            />
-          )
-        )}
-
-        <AuthDialog
-          open={isAuthDialogOpen}
-          onOpenChange={setIsAuthDialogOpen}
-          onSuccess={() => {
-            setIsAuthDialogOpen(false)
-          }}
+      {currentView === "home" ? (
+        <Home
+          onCharacterSelect={handleCharacterSelect}
+          user={user}
+          onAuthRequest={() => setIsAuthDialogOpen(true)}
         />
-      </Suspense>
+      ) : (
+        character && (
+          <ChatView
+            character={character}
+            onCharacterChange={setCurrentCharId}
+            user={user}
+            onBack={handleBackToHome}
+          />
+        )
+      )}
+
+      <AuthDialog
+        open={isAuthDialogOpen}
+        onOpenChange={setIsAuthDialogOpen}
+        onSuccess={() => {
+          setIsAuthDialogOpen(false)
+        }}
+      />
       <Toaster />
     </div>
   )
