@@ -1,6 +1,6 @@
 import { Character } from "@/lib/data"
 import { CharacterUiMeta } from "@/lib/character-ui"
-import { Heart, MessageCircle } from "lucide-react"
+import { MessageCircle } from "lucide-react"
 import { Button } from "./ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog"
 
@@ -36,7 +36,7 @@ export function CharacterDetailSheet({
           <div className="relative aspect-[4/5] w-full overflow-hidden">
             <img src={character.images.normal} alt={character.name} className="h-full w-full object-cover object-top" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/72 via-black/18 to-transparent" />
-            <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between text-white">
+            <div className="absolute bottom-4 left-4 right-4 text-white">
               <div>
                 {meta.badge && (
                   <span className="inline-flex rounded-full bg-[#f75b4f] px-2 py-1 text-[10px] font-semibold tracking-[0.16em]">
@@ -44,10 +44,6 @@ export function CharacterDetailSheet({
                   </span>
                 )}
                 <p className="mt-2 text-2xl font-black">{character.name}</p>
-              </div>
-              <div className="inline-flex items-center gap-1 rounded-full border border-white/30 bg-black/30 px-3 py-1 text-sm">
-                <Heart className="h-3.5 w-3.5" />
-                {meta.likesLabel}
               </div>
             </div>
           </div>

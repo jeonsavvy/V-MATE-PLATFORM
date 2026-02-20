@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react"
-import { Character, Message, AIResponse } from "@/lib/data"
+import { Character, Message, AIResponse, CHARACTERS } from "@/lib/data"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar } from "@/components/ui/avatar"
@@ -16,6 +16,48 @@ interface ChatViewProps {
   onBack: () => void
 }
 
+interface HistoryPreview {
+  text: string
+  updatedAt: string | null
+}
+
+const toPreviewText = (content: Message["content"]): string => {
+  if (typeof content === "string") {
+    return content
+  }
+  return typeof content.response === "string" ? content.response : ""
+}
+
+const toTruncatedPreview = (text: string, max = 48): string => {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim()
+  if (normalized.length <= max) {
+    return normalized
+  }
+  return `${normalized.slice(0, max)}…`
+}
+
+const parseSavedContentToPreview = (content: unknown): string => {
+  if (typeof content !== "string") {
+    if (content && typeof content === "object" && typeof (content as AIResponse).response === "string") {
+      return (content as AIResponse).response
+    }
+    return ""
+  }
+
+  try {
+    const parsed = JSON.parse(content)
+    if (typeof parsed === "string") {
+      return parsed
+    }
+    if (parsed && typeof parsed === "object" && typeof parsed.response === "string") {
+      return parsed.response
+    }
+    return content
+  } catch {
+    return content
+  }
+}
+
 export function ChatView({ character, onCharacterChange, user, onBack }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -30,10 +72,12 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
   ])
   const [inputValue, setInputValue] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [historyPreviews, setHistoryPreviews] = useState<Record<string, HistoryPreview>>({})
   const scrollRef = useRef<HTMLDivElement>(null)
   const isLoadingHistoryRef = useRef(false)
   const messagesRef = useRef(messages)
   const getPromptCacheKey = (charId: string) => `gemini_cached_content_${charId}`
+  const sidebarCharacters = Object.values(CHARACTERS)
 
   useEffect(() => {
     messagesRef.current = messages
@@ -245,6 +289,85 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
   }, [user, character.id])
 
   useEffect(() => {
+    const loadHistoryPreviews = async () => {
+      const initialPreviews = Object.values(CHARACTERS).reduce<Record<string, HistoryPreview>>((acc, char) => {
+        acc[char.id] = {
+          text: toTruncatedPreview(char.greeting),
+          updatedAt: null,
+        }
+        return acc
+      }, {})
+
+      if (!user) {
+        Object.values(CHARACTERS).forEach((char) => {
+          const localKey = `chat_history_${char.id}`
+          const saved = localStorage.getItem(localKey)
+          if (!saved) return
+
+          try {
+            const parsed = JSON.parse(saved) as Message[]
+            const last = parsed[parsed.length - 1]
+            if (!last) return
+
+            initialPreviews[char.id] = {
+              text: toTruncatedPreview(toPreviewText(last.content)),
+              updatedAt: last.timestamp || null,
+            }
+          } catch (error) {
+            console.error(`Failed to parse preview history for ${char.id}`, error)
+          }
+        })
+
+        setHistoryPreviews(initialPreviews)
+        return
+      }
+
+      if (!isSupabaseConfigured()) {
+        setHistoryPreviews(initialPreviews)
+        return
+      }
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) {
+          setHistoryPreviews(initialPreviews)
+          return
+        }
+
+        const { data, error } = await supabase
+          .from('chat_messages')
+          .select('character_id, content, created_at')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: true })
+
+        if (error) {
+          throw error
+        }
+
+        data?.forEach((row: any) => {
+          const targetCharacterId = String(row.character_id || '')
+          if (!CHARACTERS[targetCharacterId]) return
+
+          const preview = toTruncatedPreview(parseSavedContentToPreview(row.content))
+          if (!preview) return
+
+          initialPreviews[targetCharacterId] = {
+            text: preview,
+            updatedAt: row.created_at || null,
+          }
+        })
+
+        setHistoryPreviews(initialPreviews)
+      } catch (error) {
+        console.error("Failed to load history previews", error)
+        setHistoryPreviews(initialPreviews)
+      }
+    }
+
+    loadHistoryPreviews()
+  }, [user])
+
+  useEffect(() => {
     if (isLoadingHistoryRef.current) {
       console.log("Skipping save: history is loading")
       return
@@ -293,6 +416,26 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [messages])
+
+  useEffect(() => {
+    if (messages.length <= 1) {
+      return
+    }
+
+    const latestMessage = messages[messages.length - 1]
+    const latestText = toTruncatedPreview(toPreviewText(latestMessage.content))
+    if (!latestText) {
+      return
+    }
+
+    setHistoryPreviews((prev) => ({
+      ...prev,
+      [character.id]: {
+        text: latestText,
+        updatedAt: new Date().toISOString(),
+      },
+    }))
+  }, [messages, character.id])
 
   const handleSendMessage = async () => {
     const text = inputValue.trim()
@@ -572,6 +715,13 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
         },
       },
     ])
+    setHistoryPreviews((prev) => ({
+      ...prev,
+      [character.id]: {
+        text: toTruncatedPreview(character.greeting),
+        updatedAt: null,
+      },
+    }))
   }
 
   const currentEmotion = messages.length > 0 && typeof messages[messages.length - 1].content !== "string"
@@ -591,12 +741,6 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
 
   const characterImage = character.images[imageKey] || character.images.normal
   const characterMeta = CHARACTER_UI_META[character.id]
-  const latestPreviewMessage = [...messages].reverse().find((msg) => msg.id !== "greeting")
-  const previewText = latestPreviewMessage
-    ? typeof latestPreviewMessage.content === "string"
-      ? latestPreviewMessage.content
-      : latestPreviewMessage.content.response
-    : character.greeting
 
   return (
     <div className="relative h-dvh overflow-hidden bg-[#e7dfd3] text-[#22242b]">
@@ -609,24 +753,42 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
               <p className="text-sm font-bold text-[#2f3138]">채팅 내역</p>
             </div>
 
-            <button className="mt-4 rounded-2xl border border-white/45 bg-white/72 p-3 text-left shadow-[0_14px_24px_-20px_rgba(23,22,20,0.72)] transition hover:border-[#e9b4ae]">
-              <div className="flex items-start gap-3">
-                <Avatar
-                  src={characterImage}
-                  alt={character.name}
-                  fallback={character.name[0]}
-                  className="size-10 border border-black/10 object-cover object-top"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-[#2f3138]">{character.name}</p>
-                  <p className="mt-1 truncate text-xs text-[#6e685d]">{previewText}</p>
-                  <p className="mt-2 text-[11px] text-[#9b9488]">{messages.length > 1 ? "방금 업데이트" : "새 대화"}</p>
-                </div>
-              </div>
-            </button>
+            <div className="mt-4 space-y-2 overflow-y-auto pr-1">
+              {sidebarCharacters.map((item) => {
+                const preview = historyPreviews[item.id]
+                const isActive = item.id === character.id
 
-            <div className="mt-auto rounded-2xl border border-white/45 bg-white/70 p-4 text-xs leading-relaxed text-[#6f695e]">
-              {characterMeta.summary}
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => onCharacterChange(item.id)}
+                    className={cn(
+                      "w-full rounded-2xl border p-3 text-left shadow-[0_14px_24px_-20px_rgba(23,22,20,0.72)] transition",
+                      isActive
+                        ? "border-[#e9b4ae] bg-white/88"
+                        : "border-white/45 bg-white/72 hover:border-[#e9b4ae]"
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <Avatar
+                        src={item.images.normal}
+                        alt={item.name}
+                        fallback={item.name[0]}
+                        className="size-10 border border-black/10 object-cover object-top"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-bold text-[#2f3138]">{item.name}</p>
+                        <p className="mt-1 truncate text-xs text-[#6e685d]">
+                          {preview?.text || toTruncatedPreview(item.greeting)}
+                        </p>
+                        <p className="mt-2 text-[11px] text-[#9b9488]">
+                          {preview?.updatedAt ? "대화 기록 있음" : "새 대화"}
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           </div>
         </aside>
@@ -738,8 +900,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
 
           <div className="bg-gradient-to-t from-[#e7dfd3] via-[#e7dfd3]/95 to-transparent px-3 pb-[calc(0.85rem+env(safe-area-inset-bottom))] pt-3 sm:p-4 lg:p-6">
             <div className="mx-auto w-full max-w-4xl rounded-2xl border border-white/45 bg-[#f7f2ea]/82 shadow-[0_20px_34px_-22px_rgba(42,45,53,0.52)] backdrop-blur-xl">
-              <div className="px-4 pt-3 text-xs text-[#9b9488]">메시지 보내기</div>
-              <div className="flex items-center gap-2 px-3 pb-3">
+              <div className="flex items-center gap-2 px-3 py-3">
                 <Input
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}

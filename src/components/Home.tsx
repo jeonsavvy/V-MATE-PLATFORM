@@ -3,7 +3,7 @@ import { Character, CHARACTERS } from "@/lib/data"
 import { CHARACTER_FILTERS, CHARACTER_UI_META, CharacterFilter } from "@/lib/character-ui"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
-import { Search, LogOut, Heart } from "lucide-react"
+import { Search, LogOut } from "lucide-react"
 import { User as SupabaseUser } from "@supabase/supabase-js"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { toast } from "sonner"
@@ -71,9 +71,6 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
         <div className="mx-auto flex max-w-6xl flex-col gap-3">
           <div className="flex items-center gap-4">
             <div className="shrink-0 text-2xl font-black tracking-tight text-[#ef4f42]">V-MATE</div>
-            <nav className="hidden items-center gap-5 text-sm font-semibold md:flex">
-              <span className="text-[#23262e]">캐릭터</span>
-            </nav>
 
             <div className="ml-auto hidden max-w-sm flex-1 md:block">
               <div className="relative">
@@ -224,10 +221,6 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
                         {meta.badge}
                       </span>
                     )}
-                    <div className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full border border-white/35 bg-black/45 px-2 py-1 text-xs text-white">
-                      <Heart className="h-3 w-3" />
-                      {meta.likesLabel}
-                    </div>
                   </div>
 
                   <div className="space-y-2 p-3">

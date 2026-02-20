@@ -121,8 +121,8 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
         
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="mb-4 grid w-full grid-cols-2 border border-[#d8ccba] bg-[#ebe3d7]/80 p-1">
-            <TabsTrigger value="signin" className="rounded-md text-[#6c655b] transition data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3a3d45] data-[state=active]:to-[#4a454f] data-[state=active]:text-white">로그인</TabsTrigger>
-            <TabsTrigger value="signup" className="rounded-md text-[#6c655b] transition data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3a3d45] data-[state=active]:to-[#4a454f] data-[state=active]:text-white">회원가입</TabsTrigger>
+            <TabsTrigger value="signin" className="rounded-md text-[#6c655b] transition data-[state=active]:bg-[#f7f2ea] data-[state=active]:text-[#2f3138] data-[state=active]:shadow-sm">로그인</TabsTrigger>
+            <TabsTrigger value="signup" className="rounded-md text-[#6c655b] transition data-[state=active]:bg-[#f7f2ea] data-[state=active]:text-[#2f3138] data-[state=active]:shadow-sm">회원가입</TabsTrigger>
           </TabsList>
           
           <TabsContent value="signin">
@@ -150,7 +150,7 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
                   className="border-[#d1c4b3] bg-white/75 text-[#22242b] focus-visible:border-[#e05d4e]"
                 />
               </div>
-              <Button type="submit" className="w-full bg-gradient-to-r from-[#3a3d45] to-[#4a454f] text-white shadow-[0_14px_26px_-18px_rgba(26,27,33,0.95)] transition hover:brightness-110" disabled={isLoading}>
+              <Button type="submit" className="w-full bg-[#f55f53] text-white shadow-[0_14px_26px_-18px_rgba(245,95,83,0.95)] transition hover:bg-[#ea564a]" disabled={isLoading}>
                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 로그인
               </Button>
@@ -194,7 +194,7 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
                   className="border-[#d1c4b3] bg-white/75 text-[#22242b] focus-visible:border-[#e05d4e]"
                 />
               </div>
-              <Button type="submit" className="w-full bg-gradient-to-r from-[#3a3d45] to-[#4a454f] text-white shadow-[0_14px_26px_-18px_rgba(26,27,33,0.95)] transition hover:brightness-110" disabled={isLoading}>
+              <Button type="submit" className="w-full bg-[#f55f53] text-white shadow-[0_14px_26px_-18px_rgba(245,95,83,0.95)] transition hover:bg-[#ea564a]" disabled={isLoading}>
                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 회원가입
               </Button>
