@@ -59,11 +59,12 @@ VITE_SUPABASE_ANON_KEY=...
 GOOGLE_API_KEY=...
 
 # Optional
-GEMINI_HISTORY_MESSAGES=8
+GEMINI_HISTORY_MESSAGES=6
 GEMINI_MAX_PART_CHARS=1200
-GEMINI_MODEL_TIMEOUT_MS=14000
-FUNCTION_TOTAL_TIMEOUT_MS=22000
-FUNCTION_TIMEOUT_GUARD_MS=1200
+GEMINI_MAX_SYSTEM_PROMPT_CHARS=3500
+GEMINI_MODEL_TIMEOUT_MS=9000
+FUNCTION_TOTAL_TIMEOUT_MS=15000
+FUNCTION_TIMEOUT_GUARD_MS=1500
 GEMINI_RETRY_BACKOFF_MS=250
 ALLOWED_ORIGINS=http://localhost:5173,https://your-domain.com
 ALLOW_ALL_ORIGINS=false
@@ -87,11 +88,13 @@ npm run dev:net
 
 ## 설정 메모
 
-- 기본 히스토리 윈도우: `GEMINI_HISTORY_MESSAGES` (기본 8)
+- 기본 히스토리 윈도우: `GEMINI_HISTORY_MESSAGES` (기본 6)
 - 모델: `gemini-3-flash-preview` 고정 (모델 fallback 없음)
 - 동일 모델 재시도: 최대 1회
-- Netlify 함수 총 실행 예산: `FUNCTION_TOTAL_TIMEOUT_MS` (기본 22000ms)
-- 함수 종료 가드: `FUNCTION_TIMEOUT_GUARD_MS` (기본 1200ms)
+- 시스템 프롬프트 최대 길이: `GEMINI_MAX_SYSTEM_PROMPT_CHARS` (기본 3500)
+- 모델 요청 타임아웃: `GEMINI_MODEL_TIMEOUT_MS` (기본 9000ms)
+- Netlify 함수 총 실행 예산: `FUNCTION_TOTAL_TIMEOUT_MS` (기본 15000ms)
+- 함수 종료 가드: `FUNCTION_TIMEOUT_GUARD_MS` (기본 1500ms)
 - 재시도 간 백오프: `GEMINI_RETRY_BACKOFF_MS` (기본 250ms)
 - 기본 Rate Limit: 60초당 30회(`RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX_REQUESTS`)
 - CORS는 `ALLOWED_ORIGINS`에 등록된 Origin만 허용
@@ -115,7 +118,7 @@ npm run dev:net
 ## 주의사항 (현재 상태)
 
 - 운영 중 CORS 긴급 완화가 필요하면 `ALLOW_ALL_ORIGINS=true`로 일시 완화할 수 있습니다(기본값은 `false` 권장).
-- 대화 히스토리 기본값은 8이며, `GEMINI_HISTORY_MESSAGES`로 조정할 수 있습니다.
+- 대화 히스토리 기본값은 6이며, `GEMINI_HISTORY_MESSAGES`로 조정할 수 있습니다.
 
 ---
 

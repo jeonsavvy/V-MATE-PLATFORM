@@ -241,20 +241,22 @@ export const handler = async (event, context) => {
             };
         }
 
-        const MAX_HISTORY_MESSAGES = Number(process.env.GEMINI_HISTORY_MESSAGES || 8);
+        const MAX_HISTORY_MESSAGES = Number(process.env.GEMINI_HISTORY_MESSAGES || 6);
         const MAX_PART_CHARS = Number(process.env.GEMINI_MAX_PART_CHARS || 1200);
-        const MODEL_TIMEOUT_MS = Number(process.env.GEMINI_MODEL_TIMEOUT_MS || 14000);
-        const FUNCTION_TOTAL_TIMEOUT_MS = Number(process.env.FUNCTION_TOTAL_TIMEOUT_MS || 22000);
-        const FUNCTION_TIMEOUT_GUARD_MS = Number(process.env.FUNCTION_TIMEOUT_GUARD_MS || 1200);
+        const MAX_SYSTEM_PROMPT_CHARS = Number(process.env.GEMINI_MAX_SYSTEM_PROMPT_CHARS || 3500);
+        const MODEL_TIMEOUT_MS = Number(process.env.GEMINI_MODEL_TIMEOUT_MS || 9000);
+        const FUNCTION_TOTAL_TIMEOUT_MS = Number(process.env.FUNCTION_TOTAL_TIMEOUT_MS || 15000);
+        const FUNCTION_TIMEOUT_GUARD_MS = Number(process.env.FUNCTION_TIMEOUT_GUARD_MS || 1500);
         const GEMINI_RETRY_BACKOFF_MS = Number(process.env.GEMINI_RETRY_BACKOFF_MS || 250);
         const clampText = (value) => String(value ?? '').slice(0, MAX_PART_CHARS);
+        const clampSystemPrompt = (value) => String(value ?? '').slice(0, MAX_SYSTEM_PROMPT_CHARS);
 
         const contents = [];
 
         if (systemPrompt) {
             contents.push({
                 role: 'user',
-                parts: [{ text: systemPrompt }],
+                parts: [{ text: clampSystemPrompt(systemPrompt) }],
             });
             contents.push({
                 role: 'model',
@@ -317,7 +319,7 @@ export const handler = async (event, context) => {
                             contents,
                             generationConfig: {
                                 responseMimeType: 'application/json',
-                                maxOutputTokens: 1024,
+                                maxOutputTokens: 768,
                             },
                         }),
                         signal: controller.signal,
@@ -345,11 +347,10 @@ export const handler = async (event, context) => {
                 }
 
                 const modelErrorMessage = geminiData?.error?.message || 'Model call failed';
-                const retryableStatuses = [429, 500, 502, 503, 504];
+                const retryableStatuses = [429, 500, 502, 503];
                 const normalizedErrorMessage = String(modelErrorMessage).toLowerCase();
                 const isRetryableMessage =
                     normalizedErrorMessage.includes('temporarily unavailable') ||
-                    normalizedErrorMessage.includes('timeout') ||
                     normalizedErrorMessage.includes('try again') ||
                     normalizedErrorMessage.includes('rate limit') ||
                     normalizedErrorMessage.includes('overloaded');
@@ -391,7 +392,8 @@ export const handler = async (event, context) => {
                     };
                 }
 
-                if (attempt < MAX_MODEL_ATTEMPTS) {
+                const canRetryOnFetchError = fetchError?.name !== 'AbortError';
+                if (attempt < MAX_MODEL_ATTEMPTS && canRetryOnFetchError) {
                     const remainingAfterError = getRemainingBudget();
                     if (remainingAfterError <= FUNCTION_TIMEOUT_GUARD_MS + 700) {
                         break;
