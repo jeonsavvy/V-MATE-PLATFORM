@@ -30,7 +30,7 @@ graph TD
 - **서버리스 프록시**: Gemini API Key는 Netlify Function에서만 사용
 - **모델 고정**: `gemini-3-flash-preview` 단일 모델 사용
 - **동일 모델 재시도**: 일시 오류(타임아웃/429/5xx) 시 1회 재시도
-- **Gemini Context Cache 워밍**: 캐릭터별 시스템 프롬프트 캐시를 백그라운드 생성해 재요청 비용 절감
+- **Gemini Context Cache 재사용**: 캐릭터별 시스템 프롬프트 캐시를 `cachedContent`로 재사용해 재요청 비용 절감
 - **JSON Mode 요청**: `responseMimeType: "application/json"`
 - **Origin allowlist CORS**: `ALLOWED_ORIGINS` 기반 허용
 - **요청 제한**: Origin/IP 키 기반 rate limit 적용
@@ -72,6 +72,7 @@ GEMINI_CONTEXT_CACHE_ENABLED=true
 GEMINI_CONTEXT_CACHE_TTL_SECONDS=21600
 GEMINI_CONTEXT_CACHE_CREATE_TIMEOUT_MS=1800
 GEMINI_CONTEXT_CACHE_WARMUP_MIN_CHARS=1200
+GEMINI_CONTEXT_CACHE_AUTO_CREATE=true
 ALLOWED_ORIGINS=http://localhost:5173,https://your-domain.com
 ALLOW_ALL_ORIGINS=false
 RATE_LIMIT_WINDOW_MS=60000
@@ -106,6 +107,7 @@ npm run dev:net
 - Context Cache TTL: `GEMINI_CONTEXT_CACHE_TTL_SECONDS` (기본 21600초)
 - Cache 생성 타임아웃: `GEMINI_CONTEXT_CACHE_CREATE_TIMEOUT_MS` (기본 1800ms)
 - Cache 워밍 기준 길이: `GEMINI_CONTEXT_CACHE_WARMUP_MIN_CHARS` (기본 1200자)
+- Cache 자동 생성: `GEMINI_CONTEXT_CACHE_AUTO_CREATE` (기본 true)
 - 기본 Rate Limit: 60초당 30회(`RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX_REQUESTS`)
 - CORS는 `ALLOWED_ORIGINS`에 등록된 Origin만 허용
 - 클라이언트에서 service role key 감지 시 Supabase를 비활성화하고 placeholder client로 대체

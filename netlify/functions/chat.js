@@ -9,7 +9,6 @@ import { createHash } from 'node:crypto';
 
 const rateLimitStore = new Map();
 const promptCacheStore = new Map();
-const promptCacheCreateInFlight = new Map();
 const SUPPORTED_CHARACTER_IDS = new Set(['mika', 'alice', 'kael']);
 
 const shouldUseGeminiContextCache = () =>
@@ -19,6 +18,7 @@ const getGeminiContextCacheConfig = () => ({
     ttlSeconds: Number(process.env.GEMINI_CONTEXT_CACHE_TTL_SECONDS || 21600),
     createTimeoutMs: Number(process.env.GEMINI_CONTEXT_CACHE_CREATE_TIMEOUT_MS || 1800),
     warmupMinChars: Number(process.env.GEMINI_CONTEXT_CACHE_WARMUP_MIN_CHARS || 1200),
+    autoCreateEnabled: String(process.env.GEMINI_CONTEXT_CACHE_AUTO_CREATE || 'true').toLowerCase() !== 'false',
 });
 
 const toStablePromptHash = (prompt) =>
@@ -49,6 +49,27 @@ const removePromptCache = (cacheKey) => {
     promptCacheStore.delete(cacheKey);
 };
 
+const isValidCachedContentName = (value) => {
+    const text = String(value || '').trim();
+    if (!text.startsWith('cachedContents/')) {
+        return false;
+    }
+    return /^[A-Za-z0-9/_\-.]+$/.test(text);
+};
+
+const parseCachedContentName = (value) => {
+    const text = String(value || '').trim();
+    return isValidCachedContentName(text) ? text : null;
+};
+
+const sleep = async (ms) => {
+    if (!ms || ms <= 0) return;
+    await new Promise((resolve) => {
+        const timer = setTimeout(resolve, ms);
+        timer.unref?.();
+    });
+};
+
 const createPromptCacheEntry = async ({
     apiKey,
     modelName,
@@ -59,6 +80,7 @@ const createPromptCacheEntry = async ({
     const { ttlSeconds, createTimeoutMs } = getGeminiContextCacheConfig();
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), createTimeoutMs);
+    timeoutId.unref?.();
 
     try {
         const response = await fetch(
@@ -107,19 +129,6 @@ const createPromptCacheEntry = async ({
     } finally {
         clearTimeout(timeoutId);
     }
-};
-
-const warmPromptCacheInBackground = (params) => {
-    const { cacheKey } = params;
-    if (!cacheKey || promptCacheCreateInFlight.has(cacheKey)) {
-        return;
-    }
-
-    const task = createPromptCacheEntry(params).finally(() => {
-        promptCacheCreateInFlight.delete(cacheKey);
-    });
-
-    promptCacheCreateInFlight.set(cacheKey, task);
 };
 
 const parseAllowedOrigins = () => {
@@ -343,7 +352,7 @@ export const handler = async (event, context) => {
             };
         }
 
-        const { systemPrompt, userMessage, messageHistory, characterId } = requestData;
+        const { systemPrompt, userMessage, messageHistory, characterId, cachedContent } = requestData;
 
         if (!userMessage || typeof userMessage !== 'string' || userMessage.trim().length === 0) {
             return {
@@ -366,9 +375,10 @@ export const handler = async (event, context) => {
         const clampSystemPrompt = (value) => String(value ?? '').slice(0, MAX_SYSTEM_PROMPT_CHARS);
 
         const normalizedCharacterId = String(characterId || '').trim().toLowerCase();
+        const requestCachedContent = parseCachedContentName(cachedContent);
         const trimmedSystemPrompt = String(systemPrompt || '').trim();
         const MODEL_NAME = 'gemini-3-flash-preview';
-        const MAX_MODEL_ATTEMPTS = 2; // 첫 호출 + 동일 모델 1회 재시도
+        const MAX_MODEL_ATTEMPTS = Math.max(1, Number(process.env.GEMINI_MODEL_ATTEMPTS || 1));
 
         const canUseContextCache =
             shouldUseGeminiContextCache() &&
@@ -381,19 +391,10 @@ export const handler = async (event, context) => {
         if (canUseContextCache) {
             const promptHash = toStablePromptHash(trimmedSystemPrompt);
             promptCacheKey = buildPromptCacheKey(normalizedCharacterId, promptHash);
-            cachedContentName = getValidPromptCache(promptCacheKey)?.name || null;
-
-            const { warmupMinChars } = getGeminiContextCacheConfig();
-            const shouldWarmup = !cachedContentName && trimmedSystemPrompt.length >= warmupMinChars;
-            if (shouldWarmup) {
-                warmPromptCacheInBackground({
-                    apiKey,
-                    modelName: MODEL_NAME,
-                    characterId: normalizedCharacterId,
-                    systemPrompt: clampSystemPrompt(trimmedSystemPrompt),
-                    cacheKey: promptCacheKey,
-                });
-            }
+            cachedContentName =
+                requestCachedContent ||
+                getValidPromptCache(promptCacheKey)?.name ||
+                null;
         }
 
         const contents = [];
@@ -431,6 +432,29 @@ export const handler = async (event, context) => {
         const getRemainingBudget = () =>
             FUNCTION_TOTAL_TIMEOUT_MS - (Date.now() - requestStartedAt);
 
+        if (canUseContextCache && !cachedContentName) {
+            const { warmupMinChars, autoCreateEnabled } = getGeminiContextCacheConfig();
+            const hasEnoughBudgetForCacheCreate = getRemainingBudget() > FUNCTION_TIMEOUT_GUARD_MS + 3000;
+            const shouldCreateInline =
+                autoCreateEnabled &&
+                hasEnoughBudgetForCacheCreate &&
+                trimmedSystemPrompt.length >= warmupMinChars;
+
+            if (shouldCreateInline) {
+                const createdCache = await createPromptCacheEntry({
+                    apiKey,
+                    modelName: MODEL_NAME,
+                    characterId: normalizedCharacterId,
+                    systemPrompt: clampSystemPrompt(trimmedSystemPrompt),
+                    cacheKey: promptCacheKey,
+                });
+
+                if (createdCache?.name) {
+                    cachedContentName = createdCache.name;
+                }
+            }
+        }
+
         let geminiResponse;
         let geminiData;
         let lastModelError = null;
@@ -452,6 +476,7 @@ export const handler = async (event, context) => {
 
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), attemptTimeoutMs);
+            timeoutId.unref?.();
 
             try {
                 const requestPayload = {
@@ -534,9 +559,7 @@ export const handler = async (event, context) => {
                         GEMINI_RETRY_BACKOFF_MS,
                         Math.max(0, remainingAfterFailure - FUNCTION_TIMEOUT_GUARD_MS - 500)
                     );
-                    if (retryDelay > 0) {
-                        await new Promise((resolve) => setTimeout(resolve, retryDelay));
-                    }
+                    await sleep(retryDelay);
                     continue;
                 }
 
@@ -566,9 +589,7 @@ export const handler = async (event, context) => {
                         GEMINI_RETRY_BACKOFF_MS,
                         Math.max(0, remainingAfterError - FUNCTION_TIMEOUT_GUARD_MS - 500)
                     );
-                    if (retryDelay > 0) {
-                        await new Promise((resolve) => setTimeout(resolve, retryDelay));
-                    }
+                    await sleep(retryDelay);
                     continue;
                 }
                 break;
@@ -614,12 +635,22 @@ export const handler = async (event, context) => {
         }
 
         const normalizedPayload = normalizeAssistantPayload(geminiData.candidates[0].content.parts[0].text);
+        const responseCachedContent = cachedContentName || null;
+
+        if (canUseContextCache && promptCacheKey && responseCachedContent) {
+            const { ttlSeconds } = getGeminiContextCacheConfig();
+            promptCacheStore.set(promptCacheKey, {
+                name: responseCachedContent,
+                expireAtMs: Date.now() + Math.max(300, ttlSeconds) * 1000,
+            });
+        }
 
         return {
             statusCode: 200,
             headers,
             body: JSON.stringify({
                 text: JSON.stringify(normalizedPayload),
+                cachedContent: responseCachedContent,
             }),
         };
     } catch (error) {
