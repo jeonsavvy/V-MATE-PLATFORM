@@ -91,7 +91,7 @@ Supabase SQL Editor에서 `supabase_schema.sql` 실행
 npm run dev:net
 ```
 
-> `dev:net`은 Vite + Netlify Function을 같이 실행하기 위해 권장됩니다.
+> `dev:net`은 Vite + Netlify Function을 같이 실행하기 위해 권장됩니다. (글로벌 netlify CLI 없이 npx로 실행)
 
 ---
 

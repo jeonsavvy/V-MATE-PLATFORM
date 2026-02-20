@@ -43,3 +43,6 @@ __pycache__
 Thumbs.db
 venv
 .venv
+
+# Local Netlify folder
+.netlify
