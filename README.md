@@ -62,6 +62,9 @@ GOOGLE_API_KEY=...
 GEMINI_HISTORY_MESSAGES=8
 GEMINI_MAX_PART_CHARS=1200
 GEMINI_MODEL_TIMEOUT_MS=14000
+FUNCTION_TOTAL_TIMEOUT_MS=22000
+FUNCTION_TIMEOUT_GUARD_MS=1200
+GEMINI_RETRY_BACKOFF_MS=250
 ALLOWED_ORIGINS=http://localhost:5173,https://your-domain.com
 ALLOW_ALL_ORIGINS=false
 RATE_LIMIT_WINDOW_MS=60000
@@ -87,6 +90,9 @@ npm run dev:net
 - 기본 히스토리 윈도우: `GEMINI_HISTORY_MESSAGES` (기본 8)
 - 모델: `gemini-3-flash-preview` 고정 (모델 fallback 없음)
 - 동일 모델 재시도: 최대 1회
+- Netlify 함수 총 실행 예산: `FUNCTION_TOTAL_TIMEOUT_MS` (기본 22000ms)
+- 함수 종료 가드: `FUNCTION_TIMEOUT_GUARD_MS` (기본 1200ms)
+- 재시도 간 백오프: `GEMINI_RETRY_BACKOFF_MS` (기본 250ms)
 - 기본 Rate Limit: 60초당 30회(`RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX_REQUESTS`)
 - CORS는 `ALLOWED_ORIGINS`에 등록된 Origin만 허용
 - 클라이언트에서 service role key 감지 시 Supabase를 비활성화하고 placeholder client로 대체

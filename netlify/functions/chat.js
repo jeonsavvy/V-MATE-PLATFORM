@@ -244,6 +244,9 @@ export const handler = async (event, context) => {
         const MAX_HISTORY_MESSAGES = Number(process.env.GEMINI_HISTORY_MESSAGES || 8);
         const MAX_PART_CHARS = Number(process.env.GEMINI_MAX_PART_CHARS || 1200);
         const MODEL_TIMEOUT_MS = Number(process.env.GEMINI_MODEL_TIMEOUT_MS || 14000);
+        const FUNCTION_TOTAL_TIMEOUT_MS = Number(process.env.FUNCTION_TOTAL_TIMEOUT_MS || 22000);
+        const FUNCTION_TIMEOUT_GUARD_MS = Number(process.env.FUNCTION_TIMEOUT_GUARD_MS || 1200);
+        const GEMINI_RETRY_BACKOFF_MS = Number(process.env.GEMINI_RETRY_BACKOFF_MS || 250);
         const clampText = (value) => String(value ?? '').slice(0, MAX_PART_CHARS);
 
         const contents = [];
@@ -278,14 +281,31 @@ export const handler = async (event, context) => {
 
         const MODEL_NAME = 'gemini-3-flash-preview';
         const MAX_MODEL_ATTEMPTS = 2; // 첫 호출 + 동일 모델 1회 재시도
+        const requestStartedAt = Date.now();
+        const getRemainingBudget = () =>
+            FUNCTION_TOTAL_TIMEOUT_MS - (Date.now() - requestStartedAt);
 
         let geminiResponse;
         let geminiData;
         let lastModelError = null;
 
         for (let attempt = 1; attempt <= MAX_MODEL_ATTEMPTS; attempt += 1) {
+            const remainingBudget = getRemainingBudget();
+            const attemptTimeoutMs = Math.min(
+                MODEL_TIMEOUT_MS,
+                Math.max(0, remainingBudget - FUNCTION_TIMEOUT_GUARD_MS)
+            );
+
+            if (attemptTimeoutMs <= 0) {
+                lastModelError = {
+                    status: 504,
+                    message: 'Function timeout budget exceeded before model response.',
+                };
+                break;
+            }
+
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), MODEL_TIMEOUT_MS);
+            const timeoutId = setTimeout(() => controller.abort(), attemptTimeoutMs);
 
             try {
                 geminiResponse = await fetch(
@@ -341,6 +361,17 @@ export const handler = async (event, context) => {
                 };
 
                 if (attempt < MAX_MODEL_ATTEMPTS && (isRetryableStatus || isRetryableMessage)) {
+                    const remainingAfterFailure = getRemainingBudget();
+                    if (remainingAfterFailure <= FUNCTION_TIMEOUT_GUARD_MS + 700) {
+                        break;
+                    }
+                    const retryDelay = Math.min(
+                        GEMINI_RETRY_BACKOFF_MS,
+                        Math.max(0, remainingAfterFailure - FUNCTION_TIMEOUT_GUARD_MS - 500)
+                    );
+                    if (retryDelay > 0) {
+                        await new Promise((resolve) => setTimeout(resolve, retryDelay));
+                    }
                     continue;
                 }
 
@@ -351,7 +382,7 @@ export const handler = async (event, context) => {
                 if (fetchError?.name === 'AbortError') {
                     lastModelError = {
                         status: 504,
-                        message: `Request timeout on model ${MODEL_NAME}.`,
+                        message: `Request timeout on model ${MODEL_NAME} (${attemptTimeoutMs}ms).`,
                     };
                 } else {
                     lastModelError = {
@@ -361,6 +392,17 @@ export const handler = async (event, context) => {
                 }
 
                 if (attempt < MAX_MODEL_ATTEMPTS) {
+                    const remainingAfterError = getRemainingBudget();
+                    if (remainingAfterError <= FUNCTION_TIMEOUT_GUARD_MS + 700) {
+                        break;
+                    }
+                    const retryDelay = Math.min(
+                        GEMINI_RETRY_BACKOFF_MS,
+                        Math.max(0, remainingAfterError - FUNCTION_TIMEOUT_GUARD_MS - 500)
+                    );
+                    if (retryDelay > 0) {
+                        await new Promise((resolve) => setTimeout(resolve, retryDelay));
+                    }
                     continue;
                 }
                 break;

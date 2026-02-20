@@ -304,7 +304,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
     setMessages((prev) => [...prev, userMessage])
 
     if (user) {
-      await saveMessage(userMessage)
+      void saveMessage(userMessage)
     }
 
     setInputValue("")
@@ -400,7 +400,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
       setMessages((prev) => [...prev, assistantMessage])
 
       if (user) {
-        await saveMessage(assistantMessage)
+        void saveMessage(assistantMessage)
       }
     } catch (err: any) {
       let parsed: AIResponse
@@ -708,4 +708,3 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
     </div>
   )
 }
-
