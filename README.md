@@ -28,8 +28,8 @@ graph TD
   - 비로그인: LocalStorage
   - 로그인: Supabase `chat_messages` 테이블
 - **서버리스 프록시**: Gemini API Key는 Netlify Function에서만 사용
-- **모델 고정**: 기본 `gemini-flash-latest` 단일 모델 사용 (환경 변수로 오버라이드 가능)
-- **동일 모델 재시도**: 일시 오류(타임아웃/429/5xx) 시 1회 재시도
+- **모델 고정**: 기본 `gemini-3-flash-preview` 단일 모델 사용 (환경 변수로 오버라이드 가능)
+- **동일 모델 재시도 없음**: 모델 요청은 단일 시도로만 처리
 - **Gemini Context Cache 재사용**: 캐릭터별 시스템 프롬프트 캐시를 `cachedContent`로 재사용해 재요청 비용 절감
 - **JSON Mode 요청**: `responseMimeType: "application/json"`
 - **Origin allowlist CORS**: `ALLOWED_ORIGINS` 기반 허용
@@ -64,17 +64,15 @@ GOOGLE_API_KEY=...
 GEMINI_HISTORY_MESSAGES=6
 GEMINI_MAX_PART_CHARS=1200
 GEMINI_MAX_SYSTEM_PROMPT_CHARS=3500
-GEMINI_MODEL_TIMEOUT_MS=11000
+GEMINI_MODEL_TIMEOUT_MS=14000
 FUNCTION_TOTAL_TIMEOUT_MS=17000
 FUNCTION_TIMEOUT_GUARD_MS=1500
-GEMINI_RETRY_BACKOFF_MS=250
-GEMINI_MODEL_ATTEMPTS=2
-GEMINI_MODEL_NAME=gemini-flash-latest
+GEMINI_MODEL_NAME=gemini-3-flash-preview
 GEMINI_CONTEXT_CACHE_ENABLED=true
 GEMINI_CONTEXT_CACHE_TTL_SECONDS=21600
-GEMINI_CONTEXT_CACHE_CREATE_TIMEOUT_MS=900
+GEMINI_CONTEXT_CACHE_CREATE_TIMEOUT_MS=1800
 GEMINI_CONTEXT_CACHE_WARMUP_MIN_CHARS=1200
-GEMINI_CONTEXT_CACHE_AUTO_CREATE=true
+GEMINI_CONTEXT_CACHE_AUTO_CREATE=false
 ALLOWED_ORIGINS=http://localhost:5173,https://your-domain.com
 ALLOW_ALL_ORIGINS=false
 RATE_LIMIT_WINDOW_MS=60000
@@ -98,19 +96,17 @@ npm run dev:net
 ## 설정 메모
 
 - 기본 히스토리 윈도우: `GEMINI_HISTORY_MESSAGES` (기본 6)
-- 모델: 기본 `gemini-flash-latest` (필요 시 `GEMINI_MODEL_NAME`으로 오버라이드, 모델 fallback 없음)
-- 동일 모델 재시도: 최대 1회
-- 모델 시도 횟수: `GEMINI_MODEL_ATTEMPTS` (기본 2)
+- 모델: 기본 `gemini-3-flash-preview` (필요 시 `GEMINI_MODEL_NAME`으로 오버라이드, 모델 fallback 없음)
+- 동일 모델 재시도: 없음(0회, 단일 시도)
 - 시스템 프롬프트 최대 길이: `GEMINI_MAX_SYSTEM_PROMPT_CHARS` (기본 3500)
-- 모델 요청 타임아웃: `GEMINI_MODEL_TIMEOUT_MS` (기본 11000ms)
+- 모델 요청 타임아웃: `GEMINI_MODEL_TIMEOUT_MS` (기본 14000ms)
 - Netlify 함수 총 실행 예산: `FUNCTION_TOTAL_TIMEOUT_MS` (기본 17000ms)
 - 함수 종료 가드: `FUNCTION_TIMEOUT_GUARD_MS` (기본 1500ms)
-- 재시도 간 백오프: `GEMINI_RETRY_BACKOFF_MS` (기본 250ms)
 - Gemini Context Cache: `GEMINI_CONTEXT_CACHE_ENABLED` (기본 true)
 - Context Cache TTL: `GEMINI_CONTEXT_CACHE_TTL_SECONDS` (기본 21600초)
-- Cache 생성 타임아웃: `GEMINI_CONTEXT_CACHE_CREATE_TIMEOUT_MS` (기본 900ms)
+- Cache 생성 타임아웃: `GEMINI_CONTEXT_CACHE_CREATE_TIMEOUT_MS` (기본 1800ms)
 - Cache 워밍 기준 길이: `GEMINI_CONTEXT_CACHE_WARMUP_MIN_CHARS` (기본 1200자)
-- Cache 자동 생성: `GEMINI_CONTEXT_CACHE_AUTO_CREATE` (기본 true)
+- Cache 자동 생성: `GEMINI_CONTEXT_CACHE_AUTO_CREATE` (기본 false)
 - 기본 Rate Limit: 60초당 30회(`RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX_REQUESTS`)
 - CORS는 `ALLOWED_ORIGINS`에 등록된 Origin만 허용
 - 클라이언트에서 service role key 감지 시 Supabase를 비활성화하고 placeholder client로 대체

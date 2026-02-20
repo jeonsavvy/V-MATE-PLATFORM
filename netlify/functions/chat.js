@@ -16,9 +16,9 @@ const shouldUseGeminiContextCache = () =>
 
 const getGeminiContextCacheConfig = () => ({
     ttlSeconds: Number(process.env.GEMINI_CONTEXT_CACHE_TTL_SECONDS || 21600),
-    createTimeoutMs: Number(process.env.GEMINI_CONTEXT_CACHE_CREATE_TIMEOUT_MS || 900),
+    createTimeoutMs: Number(process.env.GEMINI_CONTEXT_CACHE_CREATE_TIMEOUT_MS || 1800),
     warmupMinChars: Number(process.env.GEMINI_CONTEXT_CACHE_WARMUP_MIN_CHARS || 1200),
-    autoCreateEnabled: String(process.env.GEMINI_CONTEXT_CACHE_AUTO_CREATE || 'true').toLowerCase() !== 'false',
+    autoCreateEnabled: String(process.env.GEMINI_CONTEXT_CACHE_AUTO_CREATE || 'false').toLowerCase() !== 'false',
 });
 
 const toStablePromptHash = (prompt) =>
@@ -92,13 +92,6 @@ const buildUpstreamFallbackPayload = (characterId) => {
         inner_heart: '응답 연결이 잠시 불안정했다.',
         response: '연결이 잠시 흔들렸어요. 같은 내용을 한 번만 다시 보내주세요.',
     };
-};
-
-const sleep = async (ms) => {
-    if (!ms || ms <= 0) return;
-    await new Promise((resolve) => {
-        setTimeout(resolve, ms);
-    });
 };
 
 const createPromptCacheEntry = async ({
@@ -397,18 +390,16 @@ export const handler = async (event, context) => {
         const MAX_HISTORY_MESSAGES = Number(process.env.GEMINI_HISTORY_MESSAGES || 6);
         const MAX_PART_CHARS = Number(process.env.GEMINI_MAX_PART_CHARS || 1200);
         const MAX_SYSTEM_PROMPT_CHARS = Number(process.env.GEMINI_MAX_SYSTEM_PROMPT_CHARS || 3500);
-        const MODEL_TIMEOUT_MS = Number(process.env.GEMINI_MODEL_TIMEOUT_MS || 11000);
+        const MODEL_TIMEOUT_MS = Number(process.env.GEMINI_MODEL_TIMEOUT_MS || 14000);
         const FUNCTION_TOTAL_TIMEOUT_MS = Number(process.env.FUNCTION_TOTAL_TIMEOUT_MS || 17000);
         const FUNCTION_TIMEOUT_GUARD_MS = Number(process.env.FUNCTION_TIMEOUT_GUARD_MS || 1500);
-        const GEMINI_RETRY_BACKOFF_MS = Number(process.env.GEMINI_RETRY_BACKOFF_MS || 250);
         const clampText = (value) => String(value ?? '').slice(0, MAX_PART_CHARS);
         const clampSystemPrompt = (value) => String(value ?? '').slice(0, MAX_SYSTEM_PROMPT_CHARS);
 
         const normalizedCharacterId = String(characterId || '').trim().toLowerCase();
         const requestCachedContent = parseCachedContentName(cachedContent);
         const trimmedSystemPrompt = String(systemPrompt || '').trim();
-        const MODEL_NAME = String(process.env.GEMINI_MODEL_NAME || 'gemini-flash-latest').trim() || 'gemini-flash-latest';
-        const MAX_MODEL_ATTEMPTS = Math.max(1, Number(process.env.GEMINI_MODEL_ATTEMPTS || 2));
+        const MODEL_NAME = String(process.env.GEMINI_MODEL_NAME || 'gemini-3-flash-preview').trim() || 'gemini-3-flash-preview';
 
         const canUseContextCache =
             shouldUseGeminiContextCache() &&
@@ -491,22 +482,19 @@ export const handler = async (event, context) => {
         let geminiData;
         let lastModelError = null;
 
-        for (let attempt = 1; attempt <= MAX_MODEL_ATTEMPTS; attempt += 1) {
-            const remainingBudget = getRemainingBudget();
-            const attemptTimeoutMs = Math.min(
-                MODEL_TIMEOUT_MS,
-                Math.max(0, remainingBudget - FUNCTION_TIMEOUT_GUARD_MS)
-            );
+        const remainingBudget = getRemainingBudget();
+        const attemptTimeoutMs = Math.min(
+            MODEL_TIMEOUT_MS,
+            Math.max(0, remainingBudget - FUNCTION_TIMEOUT_GUARD_MS)
+        );
 
-            if (attemptTimeoutMs <= 0) {
-                lastModelError = {
-                    status: 504,
-                    message: 'Function timeout budget exceeded before model response.',
-                    code: 'FUNCTION_BUDGET_TIMEOUT',
-                };
-                break;
-            }
-
+        if (attemptTimeoutMs <= 0) {
+            lastModelError = {
+                status: 504,
+                message: 'Function timeout budget exceeded before model response.',
+                code: 'FUNCTION_BUDGET_TIMEOUT',
+            };
+        } else {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), attemptTimeoutMs);
 
@@ -543,61 +531,31 @@ export const handler = async (event, context) => {
                         message: 'Invalid response from Gemini API.',
                         code: 'UPSTREAM_INVALID_RESPONSE',
                     };
-                    if (attempt < MAX_MODEL_ATTEMPTS) {
-                        continue;
-                    }
-                    break;
                 }
 
-                if (geminiResponse.ok && !geminiData.error) {
+                if (geminiResponse?.ok && geminiData && !geminiData.error) {
                     lastModelError = null;
-                    break;
-                }
+                } else if (!lastModelError) {
+                    const modelErrorMessage = geminiData?.error?.message || 'Model call failed';
+                    const normalizedErrorMessage = String(modelErrorMessage).toLowerCase();
+                    const isCacheLookupError =
+                        cachedContentName &&
+                        (normalizedErrorMessage.includes('cachedcontent') ||
+                            normalizedErrorMessage.includes('cached content') ||
+                            normalizedErrorMessage.includes('not found') ||
+                            normalizedErrorMessage.includes('expired'));
 
-                const modelErrorMessage = geminiData?.error?.message || 'Model call failed';
-                const retryableStatuses = [429, 500, 502, 503];
-                const normalizedErrorMessage = String(modelErrorMessage).toLowerCase();
-                const isRetryableMessage =
-                    normalizedErrorMessage.includes('temporarily unavailable') ||
-                    normalizedErrorMessage.includes('try again') ||
-                    normalizedErrorMessage.includes('rate limit') ||
-                    normalizedErrorMessage.includes('overloaded');
-                const isRetryableStatus = retryableStatuses.includes(geminiResponse.status);
-                const isCacheLookupError =
-                    cachedContentName &&
-                    (normalizedErrorMessage.includes('cachedcontent') ||
-                        normalizedErrorMessage.includes('cached content') ||
-                        normalizedErrorMessage.includes('not found') ||
-                        normalizedErrorMessage.includes('expired'));
+                    lastModelError = {
+                        status: geminiResponse?.status || 500,
+                        message: modelErrorMessage,
+                        code: 'UPSTREAM_MODEL_ERROR',
+                    };
 
-                lastModelError = {
-                    status: geminiResponse.status || 500,
-                    message: modelErrorMessage,
-                    code: 'UPSTREAM_MODEL_ERROR',
-                };
-
-                if (isCacheLookupError) {
-                    removePromptCache(promptCacheKey);
-                    cachedContentName = null;
-                    if (attempt < MAX_MODEL_ATTEMPTS) {
-                        continue;
+                    if (isCacheLookupError) {
+                        removePromptCache(promptCacheKey);
+                        cachedContentName = null;
                     }
                 }
-
-                if (attempt < MAX_MODEL_ATTEMPTS && (isRetryableStatus || isRetryableMessage)) {
-                    const remainingAfterFailure = getRemainingBudget();
-                    if (remainingAfterFailure <= FUNCTION_TIMEOUT_GUARD_MS + 700) {
-                        break;
-                    }
-                    const retryDelay = Math.min(
-                        GEMINI_RETRY_BACKOFF_MS,
-                        Math.max(0, remainingAfterFailure - FUNCTION_TIMEOUT_GUARD_MS - 500)
-                    );
-                    await sleep(retryDelay);
-                    continue;
-                }
-
-                break;
             } catch (fetchError) {
                 clearTimeout(timeoutId);
 
@@ -614,21 +572,6 @@ export const handler = async (event, context) => {
                         code: 'UPSTREAM_CONNECTION_FAILED',
                     };
                 }
-
-                const canRetryOnFetchError = fetchError?.name !== 'AbortError';
-                if (attempt < MAX_MODEL_ATTEMPTS && canRetryOnFetchError) {
-                    const remainingAfterError = getRemainingBudget();
-                    if (remainingAfterError <= FUNCTION_TIMEOUT_GUARD_MS + 700) {
-                        break;
-                    }
-                    const retryDelay = Math.min(
-                        GEMINI_RETRY_BACKOFF_MS,
-                        Math.max(0, remainingAfterError - FUNCTION_TIMEOUT_GUARD_MS - 500)
-                    );
-                    await sleep(retryDelay);
-                    continue;
-                }
-                break;
             }
         }
 
@@ -656,7 +599,7 @@ export const handler = async (event, context) => {
                 statusCode: lastModelError?.status || 503,
                 headers,
                 body: JSON.stringify({
-                    error: lastModelError?.message || 'Model call failed after retry. Please try again later.',
+                    error: lastModelError?.message || 'Model call failed. Please try again later.',
                     error_code: upstreamErrorCode,
                 }),
             };
