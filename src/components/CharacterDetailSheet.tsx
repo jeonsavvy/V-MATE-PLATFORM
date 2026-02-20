@@ -2,7 +2,7 @@ import { Character } from "@/lib/data"
 import { CharacterUiMeta } from "@/lib/character-ui"
 import { MessageCircle } from "lucide-react"
 import { Button } from "./ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog"
 
 interface CharacterDetailSheetProps {
   open: boolean
@@ -26,11 +26,9 @@ export function CharacterDetailSheet({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bottom-0 top-auto w-[calc(100%-12px)] max-w-[520px] translate-x-[-50%] translate-y-0 overflow-hidden rounded-t-[30px] border border-[#d8ccbe] bg-[#f6f0e7] p-0 shadow-[0_30px_60px_-35px_rgba(22,20,18,0.8)] data-[state=closed]:slide-out-to-bottom-2 data-[state=open]:slide-in-from-bottom-2 sm:bottom-auto sm:top-[50%] sm:translate-y-[-50%] sm:rounded-3xl sm:data-[state=closed]:slide-out-to-top-[52%] sm:data-[state=open]:slide-in-from-top-[48%]">
-        <DialogHeader className="space-y-0 text-left">
-          <DialogTitle className="sr-only">{character.name} 상세 정보</DialogTitle>
-          <DialogDescription className="sr-only">{meta.summary}</DialogDescription>
-        </DialogHeader>
+      <DialogContent className="bottom-0 top-auto w-[calc(100%-12px)] max-w-[520px] translate-x-[-50%] translate-y-0 overflow-hidden rounded-t-[30px] border border-[#d8ccbe] bg-[#f6f0e7] p-0 gap-0 shadow-[0_30px_60px_-35px_rgba(22,20,18,0.8)] data-[state=closed]:slide-out-to-bottom-2 data-[state=open]:slide-in-from-bottom-2 sm:bottom-auto sm:top-[50%] sm:translate-y-[-50%] sm:rounded-3xl sm:data-[state=closed]:slide-out-to-top-[52%] sm:data-[state=open]:slide-in-from-top-[48%]">
+        <DialogTitle className="sr-only">{character.name} 상세 정보</DialogTitle>
+        <DialogDescription className="sr-only">{meta.summary}</DialogDescription>
 
         <div className="max-h-[86dvh] overflow-y-auto pb-28">
           <div className="relative aspect-[4/5] w-full overflow-hidden">
@@ -43,7 +41,6 @@ export function CharacterDetailSheet({
                     {meta.badge}
                   </span>
                 )}
-                <p className="mt-2 text-2xl font-black">{character.name}</p>
               </div>
             </div>
           </div>
@@ -51,11 +48,6 @@ export function CharacterDetailSheet({
           <div className="space-y-4 p-5">
             <div className="space-y-1">
               <p className="text-lg font-bold text-[#252730]">{character.name}</p>
-              <div className="flex items-center gap-2 text-sm text-[#6f695e]">
-                <span>{meta.authorLabel ?? "@v-mate"}</span>
-                <span>•</span>
-                <span>{meta.statusLabel ?? "친구"}</span>
-              </div>
             </div>
 
             <div className="flex flex-wrap gap-2">
