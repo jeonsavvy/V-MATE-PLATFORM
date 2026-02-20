@@ -605,11 +605,8 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
       <div className="relative z-10 mx-auto grid h-full w-full max-w-[1500px] lg:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="hidden h-full border-r border-white/45 bg-[#eee7db]/75 p-4 backdrop-blur-xl lg:block">
           <div className="flex h-full flex-col">
-            <div className="flex items-center justify-between px-2">
+            <div className="px-2">
               <p className="text-sm font-bold text-[#2f3138]">채팅 내역</p>
-              <button disabled className="text-xs font-semibold text-[#8a8479]">
-                편집
-              </button>
             </div>
 
             <button className="mt-4 rounded-2xl border border-white/45 bg-white/72 p-3 text-left shadow-[0_14px_24px_-20px_rgba(23,22,20,0.72)] transition hover:border-[#e9b4ae]">

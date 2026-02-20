@@ -3,7 +3,7 @@ import { Character, CHARACTERS } from "@/lib/data"
 import { CHARACTER_FILTERS, CHARACTER_UI_META, CharacterFilter } from "@/lib/character-ui"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
-import { Search, LogOut, Bell, Sparkles, Heart } from "lucide-react"
+import { Search, LogOut, Heart } from "lucide-react"
 import { User as SupabaseUser } from "@supabase/supabase-js"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { toast } from "sonner"
@@ -72,16 +72,7 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
           <div className="flex items-center gap-4">
             <div className="shrink-0 text-2xl font-black tracking-tight text-[#ef4f42]">V-MATE</div>
             <nav className="hidden items-center gap-5 text-sm font-semibold md:flex">
-              <button disabled className="cursor-not-allowed text-[#8a8479] transition hover:text-[#5e594f]">
-                스토리
-              </button>
-              <button className="text-[#23262e]">캐릭터</button>
-              <button disabled className="cursor-not-allowed text-[#8a8479] transition hover:text-[#5e594f]">
-                내 작품
-              </button>
-              <button disabled className="cursor-not-allowed text-[#8a8479] transition hover:text-[#5e594f]">
-                이미지
-              </button>
+              <span className="text-[#23262e]">캐릭터</span>
             </nav>
 
             <div className="ml-auto hidden max-w-sm flex-1 md:block">
@@ -96,14 +87,6 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
               </div>
             </div>
 
-            <div className="hidden items-center gap-1 md:flex">
-              <Button variant="ghost" size="icon" className="rounded-full text-[#7e776d] hover:bg-white/60 hover:text-[#2d2f36]">
-                <Sparkles className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" className="rounded-full text-[#7e776d] hover:bg-white/60 hover:text-[#2d2f36]">
-                <Bell className="h-4 w-4" />
-              </Button>
-            </div>
           </div>
 
           <div className="flex items-center gap-3">
@@ -217,7 +200,7 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-2xl font-black text-[#252730]">캐릭터 모아보기</h3>
-            <p className="text-xs font-semibold text-[#7a7469]">좋아요 많은 순</p>
+            <p className="text-xs font-semibold text-[#7a7469]">총 {filteredCharacters.length}개</p>
           </div>
 
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
