@@ -5,8 +5,122 @@
  * - Origin/IP 기반 rate limit
  * - Gemini 응답 JSON 정규화
  */
+import { createHash } from 'node:crypto';
 
 const rateLimitStore = new Map();
+const promptCacheStore = new Map();
+const promptCacheCreateInFlight = new Map();
+const SUPPORTED_CHARACTER_IDS = new Set(['mika', 'alice', 'kael']);
+
+const shouldUseGeminiContextCache = () =>
+    String(process.env.GEMINI_CONTEXT_CACHE_ENABLED || 'true').toLowerCase() !== 'false';
+
+const getGeminiContextCacheConfig = () => ({
+    ttlSeconds: Number(process.env.GEMINI_CONTEXT_CACHE_TTL_SECONDS || 21600),
+    createTimeoutMs: Number(process.env.GEMINI_CONTEXT_CACHE_CREATE_TIMEOUT_MS || 1800),
+    warmupMinChars: Number(process.env.GEMINI_CONTEXT_CACHE_WARMUP_MIN_CHARS || 1200),
+});
+
+const toStablePromptHash = (prompt) =>
+    createHash('sha256')
+        .update(String(prompt || ''))
+        .digest('hex')
+        .slice(0, 24);
+
+const buildPromptCacheKey = (characterId, promptHash) => `${characterId}:${promptHash}`;
+
+const getValidPromptCache = (cacheKey) => {
+    const entry = promptCacheStore.get(cacheKey);
+    if (!entry) {
+        return null;
+    }
+
+    // 만료 15초 전부터는 재사용하지 않고 재생성 유도
+    if (!entry.expireAtMs || Date.now() >= entry.expireAtMs - 15000) {
+        promptCacheStore.delete(cacheKey);
+        return null;
+    }
+
+    return entry;
+};
+
+const removePromptCache = (cacheKey) => {
+    if (!cacheKey) return;
+    promptCacheStore.delete(cacheKey);
+};
+
+const createPromptCacheEntry = async ({
+    apiKey,
+    modelName,
+    characterId,
+    systemPrompt,
+    cacheKey,
+}) => {
+    const { ttlSeconds, createTimeoutMs } = getGeminiContextCacheConfig();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), createTimeoutMs);
+
+    try {
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/cachedContents?key=${apiKey}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: `models/${modelName}`,
+                    displayName: `vmate-${characterId}-${cacheKey.slice(-8)}`,
+                    ttl: `${Math.max(300, ttlSeconds)}s`,
+                    systemInstruction: {
+                        role: 'system',
+                        parts: [{ text: String(systemPrompt) }],
+                    },
+                }),
+                signal: controller.signal,
+            }
+        );
+
+        let data;
+        try {
+            data = await response.json();
+        } catch {
+            return null;
+        }
+
+        if (!response.ok || data?.error || !data?.name) {
+            return null;
+        }
+
+        const expireAtMs = data?.expireTime ? Date.parse(data.expireTime) : NaN;
+        const safeExpireAtMs = Number.isFinite(expireAtMs)
+            ? expireAtMs
+            : Date.now() + Math.max(300, ttlSeconds) * 1000;
+
+        const entry = {
+            name: data.name,
+            expireAtMs: safeExpireAtMs,
+        };
+
+        promptCacheStore.set(cacheKey, entry);
+        return entry;
+    } catch {
+        return null;
+    } finally {
+        clearTimeout(timeoutId);
+    }
+};
+
+const warmPromptCacheInBackground = (params) => {
+    const { cacheKey } = params;
+    if (!cacheKey || promptCacheCreateInFlight.has(cacheKey)) {
+        return;
+    }
+
+    const task = createPromptCacheEntry(params).finally(() => {
+        promptCacheCreateInFlight.delete(cacheKey);
+    });
+
+    promptCacheCreateInFlight.set(cacheKey, task);
+};
 
 const parseAllowedOrigins = () => {
     const raw = (process.env.ALLOWED_ORIGINS || '').trim();
@@ -103,7 +217,7 @@ const buildHeaders = (originAllowed, origin) => {
         'Access-Control-Allow-Headers': 'Content-Type',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
         'Vary': 'Origin',
-        'X-V-MATE-Function': 'chat-v3',
+        'X-V-MATE-Function': 'chat-v4',
         'Content-Type': 'application/json',
     };
 };
@@ -229,7 +343,7 @@ export const handler = async (event, context) => {
             };
         }
 
-        const { systemPrompt, userMessage, messageHistory } = requestData;
+        const { systemPrompt, userMessage, messageHistory, characterId } = requestData;
 
         if (!userMessage || typeof userMessage !== 'string' || userMessage.trim().length === 0) {
             return {
@@ -251,18 +365,38 @@ export const handler = async (event, context) => {
         const clampText = (value) => String(value ?? '').slice(0, MAX_PART_CHARS);
         const clampSystemPrompt = (value) => String(value ?? '').slice(0, MAX_SYSTEM_PROMPT_CHARS);
 
-        const contents = [];
+        const normalizedCharacterId = String(characterId || '').trim().toLowerCase();
+        const trimmedSystemPrompt = String(systemPrompt || '').trim();
+        const MODEL_NAME = 'gemini-3-flash-preview';
+        const MAX_MODEL_ATTEMPTS = 2; // 첫 호출 + 동일 모델 1회 재시도
 
-        if (systemPrompt) {
-            contents.push({
-                role: 'user',
-                parts: [{ text: clampSystemPrompt(systemPrompt) }],
-            });
-            contents.push({
-                role: 'model',
-                parts: [{ text: 'Understood. I will respond in the specified JSON format.' }],
-            });
+        const canUseContextCache =
+            shouldUseGeminiContextCache() &&
+            Boolean(trimmedSystemPrompt) &&
+            SUPPORTED_CHARACTER_IDS.has(normalizedCharacterId);
+
+        let promptCacheKey = null;
+        let cachedContentName = null;
+
+        if (canUseContextCache) {
+            const promptHash = toStablePromptHash(trimmedSystemPrompt);
+            promptCacheKey = buildPromptCacheKey(normalizedCharacterId, promptHash);
+            cachedContentName = getValidPromptCache(promptCacheKey)?.name || null;
+
+            const { warmupMinChars } = getGeminiContextCacheConfig();
+            const shouldWarmup = !cachedContentName && trimmedSystemPrompt.length >= warmupMinChars;
+            if (shouldWarmup) {
+                warmPromptCacheInBackground({
+                    apiKey,
+                    modelName: MODEL_NAME,
+                    characterId: normalizedCharacterId,
+                    systemPrompt: clampSystemPrompt(trimmedSystemPrompt),
+                    cacheKey: promptCacheKey,
+                });
+            }
         }
+
+        const contents = [];
 
         if (messageHistory && Array.isArray(messageHistory)) {
             const recentHistory = messageHistory.slice(-MAX_HISTORY_MESSAGES);
@@ -281,8 +415,18 @@ export const handler = async (event, context) => {
             parts: [{ text: clampText(userMessage) }],
         });
 
-        const MODEL_NAME = 'gemini-3-flash-preview';
-        const MAX_MODEL_ATTEMPTS = 2; // 첫 호출 + 동일 모델 1회 재시도
+        const contentsWithSystemPrompt = [];
+        if (trimmedSystemPrompt) {
+            contentsWithSystemPrompt.push({
+                role: 'user',
+                parts: [{ text: clampSystemPrompt(trimmedSystemPrompt) }],
+            });
+            contentsWithSystemPrompt.push({
+                role: 'model',
+                parts: [{ text: 'Understood. I will respond in the specified JSON format.' }],
+            });
+        }
+        contentsWithSystemPrompt.push(...contents);
         const requestStartedAt = Date.now();
         const getRemainingBudget = () =>
             FUNCTION_TOTAL_TIMEOUT_MS - (Date.now() - requestStartedAt);
@@ -310,18 +454,24 @@ export const handler = async (event, context) => {
             const timeoutId = setTimeout(() => controller.abort(), attemptTimeoutMs);
 
             try {
+                const requestPayload = {
+                    contents: cachedContentName ? contents : contentsWithSystemPrompt,
+                    generationConfig: {
+                        responseMimeType: 'application/json',
+                        maxOutputTokens: 768,
+                    },
+                };
+
+                if (cachedContentName) {
+                    requestPayload.cachedContent = cachedContentName;
+                }
+
                 geminiResponse = await fetch(
                     `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`,
                     {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents,
-                            generationConfig: {
-                                responseMimeType: 'application/json',
-                                maxOutputTokens: 768,
-                            },
-                        }),
+                        body: JSON.stringify(requestPayload),
                         signal: controller.signal,
                     }
                 );
@@ -355,11 +505,25 @@ export const handler = async (event, context) => {
                     normalizedErrorMessage.includes('rate limit') ||
                     normalizedErrorMessage.includes('overloaded');
                 const isRetryableStatus = retryableStatuses.includes(geminiResponse.status);
+                const isCacheLookupError =
+                    cachedContentName &&
+                    (normalizedErrorMessage.includes('cachedcontent') ||
+                        normalizedErrorMessage.includes('cached content') ||
+                        normalizedErrorMessage.includes('not found') ||
+                        normalizedErrorMessage.includes('expired'));
 
                 lastModelError = {
                     status: geminiResponse.status || 500,
                     message: modelErrorMessage,
                 };
+
+                if (isCacheLookupError) {
+                    removePromptCache(promptCacheKey);
+                    cachedContentName = null;
+                    if (attempt < MAX_MODEL_ATTEMPTS) {
+                        continue;
+                    }
+                }
 
                 if (attempt < MAX_MODEL_ATTEMPTS && (isRetryableStatus || isRetryableMessage)) {
                     const remainingAfterFailure = getRemainingBudget();

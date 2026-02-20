@@ -327,6 +327,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
+            characterId: character.id,
             systemPrompt: character.system,
             userMessage: text,
             messageHistory: messageHistory.slice(1), // greeting 제외
@@ -569,18 +570,19 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
   const characterImage = character.images[imageKey] || character.images.normal
 
   return (
-    <div className="flex h-screen bg-black overflow-hidden relative">
+    <div className="relative flex h-screen overflow-hidden bg-[#04040a]">
       <div className="absolute inset-0 z-0">
         <img
           src={characterImage}
           alt={character.name}
-          className="size-full object-cover opacity-20 lg:opacity-100 lg:w-[45%] transition-opacity duration-500"
+          className="size-full object-cover object-top opacity-20 transition-opacity duration-500 lg:w-[45%] lg:opacity-100"
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-black/80 to-black lg:via-black/50" />
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-black/85 to-[#05050A] lg:via-black/55" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_10%,rgba(255,0,127,0.18),transparent_35%),radial-gradient(circle_at_88%_90%,rgba(64,224,255,0.12),transparent_40%)]" />
       </div>
 
       <div className="relative z-10 flex flex-col w-full lg:ml-auto lg:w-[55%] h-full">
-        <header className="flex items-center justify-between p-4 lg:p-6 border-b border-white/5 bg-black/50 backdrop-blur-sm">
+        <header className="flex items-center justify-between border-b border-white/10 bg-black/45 p-4 backdrop-blur-xl lg:p-6">
           <div className="flex items-center gap-3">
             <Button
               variant="ghost"
@@ -600,7 +602,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
           <div className="flex items-center gap-4">
             <div className="text-right hidden sm:block">
               <p className="text-sm font-bold text-white">{character.name}</p>
-              <p className="text-xs text-pink-400">INTERACTIVE PERSONA</p>
+              <p className="text-xs text-pink-300/90 tracking-[0.22em] uppercase">interactive persona</p>
             </div>
             <Button
               variant="ghost"
@@ -613,7 +615,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
             <select
               value={character.id}
               onChange={(e) => onCharacterChange(e.target.value)}
-              className="bg-neutral-900/90 text-gray-300 border border-white/10 text-xs rounded px-4 py-2 focus:border-[#FF007F] outline-none cursor-pointer hover:bg-neutral-800 transition uppercase tracking-wider"
+              className="cursor-pointer rounded-lg border border-white/10 bg-neutral-900/85 px-4 py-2 text-xs uppercase tracking-wider text-gray-300 outline-none transition hover:bg-neutral-800 focus:border-[#FF007F]"
             >
               <option value="mika">Misono Mika</option>
               <option value="alice">Alice Zuberg</option>
@@ -624,7 +626,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
 
         <div
           ref={scrollRef}
-          className="flex-1 overflow-y-auto p-4 lg:p-8 space-y-6 scroll-smooth"
+          className="flex-1 space-y-6 overflow-y-auto p-4 scroll-smooth lg:p-8"
         >
           {messages.map((msg) => {
             const isUser = msg.role === "user"
@@ -641,7 +643,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
               >
                 <div
                   className={cn(
-                    "flex max-w-[80%] md:max-w-[60%] gap-3",
+                    "flex max-w-[86%] gap-3 md:max-w-[64%]",
                     isUser ? "flex-row-reverse" : "flex-row"
                   )}
                 >
@@ -656,14 +658,14 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
 
                   <div
                     className={cn(
-                      "p-4 rounded-2xl text-sm leading-relaxed",
+                      "rounded-2xl p-4 text-sm leading-relaxed shadow-lg shadow-black/20",
                       isUser
-                        ? "bg-[#FF007F] text-white rounded-br-sm"
-                        : "bg-neutral-900/90 text-neutral-100 border border-white/10 rounded-bl-sm backdrop-blur-sm"
+                        ? "rounded-br-sm bg-gradient-to-br from-[#FF007F] to-fuchsia-600 text-white"
+                        : "rounded-bl-sm border border-white/10 bg-neutral-900/80 text-neutral-100 backdrop-blur-lg"
                     )}
                   >
                     {!isUser && innerHeart && (
-                      <div className="text-[#00FFCC] text-xs mb-3 font-semibold bg-black/40 p-3 rounded-xl border-l-2 border-[#00FFCC]">
+                      <div className="mb-3 rounded-xl border border-emerald-300/20 bg-emerald-500/10 p-3 text-xs font-semibold text-emerald-200">
                         💭 {innerHeart}
                       </div>
                     )}
@@ -675,17 +677,21 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
           })}
           {isLoading && (
             <div className="flex justify-start fade-in">
-              <div className="bg-neutral-900/90 text-gray-500 px-5 py-3 rounded-2xl rounded-bl-sm border border-white/10 text-xs animate-pulse">
-                ...
+              <div className="rounded-2xl rounded-bl-sm border border-white/10 bg-neutral-900/80 px-5 py-3 text-xs text-gray-400">
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-fuchsia-400 [animation-delay:-0.2s]" />
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-fuchsia-400 [animation-delay:-0.1s]" />
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-fuchsia-400" />
+                </span>
               </div>
             </div>
           )}
         </div>
 
-        <div className="p-4 lg:p-6 pb-8 bg-gradient-to-t from-black via-black/90 to-transparent">
+        <div className="bg-gradient-to-t from-black via-black/90 to-transparent p-4 pb-8 lg:p-6">
           <div className="max-w-4xl mx-auto relative group">
             <div className="absolute inset-0 bg-[#FF007F]/20 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-            <div className="relative flex items-center gap-2 bg-neutral-900/90 border border-white/10 rounded-full p-2 pl-6 backdrop-blur-xl shadow-2xl">
+            <div className="relative flex items-center gap-2 rounded-full border border-white/10 bg-neutral-900/80 p-2 pl-6 shadow-2xl backdrop-blur-xl">
               <Input
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}

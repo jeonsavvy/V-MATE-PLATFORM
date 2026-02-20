@@ -45,12 +45,18 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
   }
 
   return (
-    <div className="min-h-screen bg-black pb-20">
+    <div className="relative min-h-screen overflow-hidden bg-[#05050A] pb-20">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-36 left-1/2 h-72 w-[34rem] -translate-x-1/2 rounded-full bg-fuchsia-600/20 blur-[120px]" />
+        <div className="absolute -left-28 top-1/3 h-72 w-72 rounded-full bg-indigo-500/20 blur-[110px]" />
+        <div className="absolute -right-24 bottom-12 h-80 w-80 rounded-full bg-cyan-400/10 blur-[120px]" />
+      </div>
+
       {/* Header */}
-      <header className="sticky top-0 z-30 bg-black/80 backdrop-blur-md border-b border-white/5 px-4 py-3">
+      <header className="sticky top-0 z-30 border-b border-white/10 bg-black/40 px-4 py-3 backdrop-blur-xl">
         <div className="max-w-6xl mx-auto flex items-center gap-4">
           <div className="flex-1 flex items-center gap-2">
-            <h1 className="text-xl font-bold bg-gradient-to-r from-[#FF007F] to-rose-600 bg-clip-text text-transparent mr-4">
+            <h1 className="mr-4 bg-gradient-to-r from-[#FF007F] via-fuchsia-400 to-violet-400 bg-clip-text text-xl font-black tracking-tight text-transparent">
               <span className="md:hidden">V-MATE</span>
               <span className="hidden md:inline">V-MATE</span>
             </h1>
@@ -58,7 +64,7 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
                 placeholder="캐릭터 검색..."
-                className="pl-9 bg-neutral-900/90 border-white/10 text-white placeholder:text-neutral-500 focus:bg-neutral-800 transition-all rounded-full h-10"
+                className="h-10 rounded-full border-white/10 bg-neutral-900/80 pl-9 text-white placeholder:text-neutral-500 transition-all focus:border-fuchsia-400/40 focus:bg-neutral-800"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -93,14 +99,42 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <Button onClick={onAuthRequest} className="rounded-full bg-[#FF007F] hover:bg-[#E00070] text-white px-6">
+            <Button
+              onClick={onAuthRequest}
+              className="rounded-full bg-gradient-to-r from-[#FF007F] to-fuchsia-500 px-6 text-white shadow-lg shadow-fuchsia-600/20 hover:from-[#E00070] hover:to-fuchsia-600"
+            >
               로그인
             </Button>
           )}
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-6 space-y-8">
+      <main className="relative z-10 mx-auto max-w-6xl space-y-8 px-4 py-6">
+        <section className="rounded-3xl border border-white/10 bg-gradient-to-br from-[#171725]/75 via-[#0D0D17]/70 to-[#121228]/70 p-6 shadow-[0_24px_80px_-35px_rgba(232,53,151,0.45)] backdrop-blur-xl md:p-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-fuchsia-300/90">interactive persona</p>
+          <h2 className="mt-3 text-2xl font-black leading-tight text-white md:text-4xl">
+            감정과 속마음이 보이는
+            <br className="hidden md:block" /> 몰입형 캐릭터 채팅
+          </h2>
+          <p className="mt-3 max-w-2xl text-sm text-neutral-300 md:text-base">
+            캐릭터별 페르소나 프롬프트와 감정 반응 UI를 결합해 텍스트 이상의 상호작용을 제공합니다.
+          </p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+              <p className="text-xs uppercase tracking-[0.24em] text-neutral-400">character</p>
+              <p className="mt-2 text-2xl font-bold text-white">{characters.length}</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+              <p className="text-xs uppercase tracking-[0.24em] text-neutral-400">mode</p>
+              <p className="mt-2 text-2xl font-bold text-white">Dual-Psych</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+              <p className="text-xs uppercase tracking-[0.24em] text-neutral-400">session</p>
+              <p className="mt-2 text-2xl font-bold text-white">{user ? "Signed" : "Guest"}</p>
+            </div>
+          </div>
+        </section>
+
         {/* Character Grid */}
         <div className="space-y-6">
           <div className="flex items-center justify-between">
@@ -112,7 +146,7 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
               <div
                 key={char.id}
                 onClick={() => onCharacterSelect(char)}
-                className="group relative overflow-hidden rounded-xl border border-white/10 bg-neutral-900/50 hover:bg-neutral-800/50 transition-all cursor-pointer hover:border-[#FF007F]/50 hover:shadow-lg hover:shadow-[#FF007F]/20"
+                className="group relative cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-neutral-900/40 transition-all duration-300 hover:-translate-y-1.5 hover:border-fuchsia-400/45 hover:shadow-2xl hover:shadow-fuchsia-500/25"
               >
                 <div className="relative aspect-[3/4] overflow-hidden">
                   <img
@@ -120,9 +154,12 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
                     alt={char.name}
                     className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/35 to-transparent" />
 
                   <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
+                    <span className="mb-2 inline-flex rounded-full border border-fuchsia-300/40 bg-fuchsia-500/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-fuchsia-100">
+                      persona
+                    </span>
                     <h3 className="text-lg font-bold leading-none">{char.name}</h3>
                   </div>
                 </div>
@@ -140,4 +177,3 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
     </div>
   )
 }
-
