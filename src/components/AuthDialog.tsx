@@ -109,26 +109,26 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md bg-neutral-900 border-neutral-800">
+      <DialogContent className="sm:max-w-md border-black/10 bg-[#f5f1e9]/95 text-[#1f2128] backdrop-blur-xl">
         <DialogHeader>
-          <DialogTitle className="text-center text-2xl font-bold bg-gradient-to-r from-[#FF007F] to-rose-600 bg-clip-text text-transparent">
+          <DialogTitle className="text-center text-2xl font-black tracking-tight text-[#2d3039]">
             V-MATE
           </DialogTitle>
-          <DialogDescription className="text-center text-neutral-400">
+          <DialogDescription className="text-center text-[#7f7a72]">
             로그인하여 대화 내역을 저장하고 동기화하세요.
           </DialogDescription>
         </DialogHeader>
         
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-4 bg-neutral-800">
-            <TabsTrigger value="signin" className="data-[state=active]:bg-[#FF007F] data-[state=active]:text-white">로그인</TabsTrigger>
-            <TabsTrigger value="signup" className="data-[state=active]:bg-[#FF007F] data-[state=active]:text-white">회원가입</TabsTrigger>
+          <TabsList className="mb-4 grid w-full grid-cols-2 bg-[#e8e2d7]">
+            <TabsTrigger value="signin" className="data-[state=active]:bg-[#3a3d45] data-[state=active]:text-white">로그인</TabsTrigger>
+            <TabsTrigger value="signup" className="data-[state=active]:bg-[#3a3d45] data-[state=active]:text-white">회원가입</TabsTrigger>
           </TabsList>
           
           <TabsContent value="signin">
             <form onSubmit={handleSignIn} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-neutral-300">이메일</Label>
+                <Label htmlFor="email" className="text-[#6f6a61]">이메일</Label>
                 <Input 
                   id="email" 
                   type="email" 
@@ -136,21 +136,21 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="bg-neutral-800 border-neutral-700 text-white placeholder:text-neutral-500"
+                  className="border-black/10 bg-white/80 text-[#22242b] placeholder:text-[#8f8b82]"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-neutral-300">비밀번호</Label>
+                <Label htmlFor="password" className="text-[#6f6a61]">비밀번호</Label>
                 <Input 
                   id="password" 
                   type="password" 
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="bg-neutral-800 border-neutral-700 text-white"
+                  className="border-black/10 bg-white/80 text-[#22242b]"
                 />
               </div>
-              <Button type="submit" className="w-full bg-[#FF007F] hover:bg-[#E00070] text-white" disabled={isLoading}>
+              <Button type="submit" className="w-full bg-[#3a3d45] text-white hover:bg-[#2d2f36]" disabled={isLoading}>
                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 로그인
               </Button>
@@ -160,18 +160,18 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
           <TabsContent value="signup">
             <form onSubmit={handleSignUp} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name" className="text-neutral-300">이름</Label>
+                <Label htmlFor="name" className="text-[#6f6a61]">이름</Label>
                 <Input 
                   id="name" 
                   placeholder="표시할 이름" 
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required
-                  className="bg-neutral-800 border-neutral-700 text-white placeholder:text-neutral-500"
+                  className="border-black/10 bg-white/80 text-[#22242b] placeholder:text-[#8f8b82]"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="signup-email" className="text-neutral-300">이메일</Label>
+                <Label htmlFor="signup-email" className="text-[#6f6a61]">이메일</Label>
                 <Input 
                   id="signup-email" 
                   type="email" 
@@ -179,11 +179,11 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="bg-neutral-800 border-neutral-700 text-white placeholder:text-neutral-500"
+                  className="border-black/10 bg-white/80 text-[#22242b] placeholder:text-[#8f8b82]"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="signup-password" className="text-neutral-300">비밀번호</Label>
+                <Label htmlFor="signup-password" className="text-[#6f6a61]">비밀번호</Label>
                 <Input 
                   id="signup-password" 
                   type="password" 
@@ -191,10 +191,10 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   minLength={6}
-                  className="bg-neutral-800 border-neutral-700 text-white"
+                  className="border-black/10 bg-white/80 text-[#22242b]"
                 />
               </div>
-              <Button type="submit" className="w-full bg-[#FF007F] hover:bg-[#E00070] text-white" disabled={isLoading}>
+              <Button type="submit" className="w-full bg-[#3a3d45] text-white hover:bg-[#2d2f36]" disabled={isLoading}>
                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 회원가입
               </Button>
@@ -205,4 +205,3 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
     </Dialog>
   )
 }
-

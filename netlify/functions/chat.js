@@ -378,7 +378,7 @@ export const handler = async (event, context) => {
         const requestCachedContent = parseCachedContentName(cachedContent);
         const trimmedSystemPrompt = String(systemPrompt || '').trim();
         const MODEL_NAME = 'gemini-3-flash-preview';
-        const MAX_MODEL_ATTEMPTS = Math.max(1, Number(process.env.GEMINI_MODEL_ATTEMPTS || 1));
+        const MAX_MODEL_ATTEMPTS = Math.max(1, Number(process.env.GEMINI_MODEL_ATTEMPTS || 2));
 
         const canUseContextCache =
             shouldUseGeminiContextCache() &&
@@ -470,6 +470,7 @@ export const handler = async (event, context) => {
                 lastModelError = {
                     status: 504,
                     message: 'Function timeout budget exceeded before model response.',
+                    code: 'FUNCTION_BUDGET_TIMEOUT',
                 };
                 break;
             }
@@ -509,6 +510,7 @@ export const handler = async (event, context) => {
                     lastModelError = {
                         status: 502,
                         message: 'Invalid response from Gemini API.',
+                        code: 'UPSTREAM_INVALID_RESPONSE',
                     };
                     if (attempt < MAX_MODEL_ATTEMPTS) {
                         continue;
@@ -540,6 +542,7 @@ export const handler = async (event, context) => {
                 lastModelError = {
                     status: geminiResponse.status || 500,
                     message: modelErrorMessage,
+                    code: 'UPSTREAM_MODEL_ERROR',
                 };
 
                 if (isCacheLookupError) {
@@ -571,11 +574,13 @@ export const handler = async (event, context) => {
                     lastModelError = {
                         status: 504,
                         message: `Request timeout on model ${MODEL_NAME} (${attemptTimeoutMs}ms).`,
+                        code: 'UPSTREAM_TIMEOUT',
                     };
                 } else {
                     lastModelError = {
                         status: 503,
                         message: 'Failed to connect to Gemini API. Please try again later.',
+                        code: 'UPSTREAM_CONNECTION_FAILED',
                     };
                 }
 
@@ -602,6 +607,7 @@ export const handler = async (event, context) => {
                 headers,
                 body: JSON.stringify({
                     error: lastModelError?.message || 'Model call failed after retry. Please try again later.',
+                    error_code: lastModelError?.code || 'UPSTREAM_UNKNOWN_ERROR',
                 }),
             };
         }
@@ -622,7 +628,10 @@ export const handler = async (event, context) => {
             return {
                 statusCode: geminiResponse.status || 500,
                 headers,
-                body: JSON.stringify({ error: errorMessage }),
+                body: JSON.stringify({
+                    error: errorMessage,
+                    error_code: 'UPSTREAM_MODEL_ERROR',
+                }),
             };
         }
 

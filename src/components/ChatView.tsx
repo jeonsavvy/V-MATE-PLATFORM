@@ -351,11 +351,21 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
 
       if (!response.ok) {
         let errorMessage = "서버 오류가 발생했습니다."
+        let errorCode = ""
         try {
           const errorData = await response.json()
           errorMessage = errorData.error || errorMessage
+          errorCode = errorData.error_code || ""
           if (errorMessage.includes("API key") || errorMessage.includes("GOOGLE_API_KEY")) {
             errorMessage = "API 키가 설정되지 않았거나 만료되었습니다. 관리자에게 문의해주세요."
+          } else if (
+            errorCode === "UPSTREAM_CONNECTION_FAILED" ||
+            errorCode === "UPSTREAM_TIMEOUT" ||
+            errorMessage.includes("Failed to connect to Gemini API") ||
+            errorMessage.includes("temporarily unavailable") ||
+            errorMessage.includes("overloaded")
+          ) {
+            errorMessage = "현재 AI 서버 연결이 불안정합니다. 잠시 후 다시 시도해주세요."
           }
         } catch (e) {
           if (response.status === 500) {

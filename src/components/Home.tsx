@@ -109,34 +109,10 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
       </header>
 
       <main className="relative z-10 mx-auto max-w-6xl space-y-8 px-4 py-6">
-        <section className="rounded-3xl border border-black/10 bg-white/75 p-6 shadow-[0_22px_70px_-45px_rgba(40,41,49,0.55)] backdrop-blur-xl md:p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#8f8b82]">interactive persona</p>
-          <h2 className="mt-3 text-2xl font-black leading-tight text-[#252730] md:text-4xl">
-            감정과 속마음이 보이는
-            <br className="hidden md:block" /> 몰입형 캐릭터 채팅
-          </h2>
-          <p className="mt-3 max-w-2xl text-sm text-[#5b5f69] md:text-base">
-            캐릭터별 페르소나 프롬프트와 감정 반응 UI를 결합해 텍스트 이상의 상호작용을 제공합니다.
-          </p>
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl border border-black/10 bg-white/75 p-4">
-              <p className="text-xs uppercase tracking-[0.24em] text-[#86817a]">character</p>
-              <p className="mt-2 text-2xl font-bold text-[#262830]">{characters.length}</p>
-            </div>
-            <div className="rounded-2xl border border-black/10 bg-white/75 p-4">
-              <p className="text-xs uppercase tracking-[0.24em] text-[#86817a]">mode</p>
-              <p className="mt-2 text-2xl font-bold text-[#262830]">Dual-Psych</p>
-            </div>
-            <div className="rounded-2xl border border-black/10 bg-white/75 p-4">
-              <p className="text-xs uppercase tracking-[0.24em] text-[#86817a]">session</p>
-              <p className="mt-2 text-2xl font-bold text-[#262830]">{user ? "Signed" : "Guest"}</p>
-            </div>
-          </div>
-        </section>
-
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-bold text-[#252730]">캐릭터 선택</h2>
+            <p className="text-xs uppercase tracking-[0.2em] text-[#8f8b82]">interactive persona</p>
           </div>
 
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
