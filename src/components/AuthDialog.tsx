@@ -109,7 +109,7 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-md border-white/45 bg-[#f2ebe0]/88 text-[#1f2128] shadow-[0_30px_56px_-34px_rgba(18,17,15,0.82)] backdrop-blur-2xl">
+      <DialogContent className="max-h-[92dvh] overflow-y-auto border-[#dfd3c3] bg-[#f8f4ec] text-[#1f2128] shadow-[0_30px_56px_-34px_rgba(18,17,15,0.5)] sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-center text-3xl font-black tracking-[0.03em] text-[#2d3039]">
             V-MATE

@@ -19,6 +19,7 @@ interface ChatViewProps {
 interface HistoryPreview {
   text: string
   updatedAt: string | null
+  hasHistory: boolean
 }
 
 const toPreviewText = (content: Message["content"]): string => {
@@ -77,7 +78,6 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
   const isLoadingHistoryRef = useRef(false)
   const messagesRef = useRef(messages)
   const getPromptCacheKey = (charId: string) => `gemini_cached_content_${charId}`
-  const sidebarCharacters = Object.values(CHARACTERS)
 
   useEffect(() => {
     messagesRef.current = messages
@@ -290,13 +290,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
 
   useEffect(() => {
     const loadHistoryPreviews = async () => {
-      const initialPreviews = Object.values(CHARACTERS).reduce<Record<string, HistoryPreview>>((acc, char) => {
-        acc[char.id] = {
-          text: toTruncatedPreview(char.greeting),
-          updatedAt: null,
-        }
-        return acc
-      }, {})
+      const initialPreviews: Record<string, HistoryPreview> = {}
 
       if (!user) {
         Object.values(CHARACTERS).forEach((char) => {
@@ -312,6 +306,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
             initialPreviews[char.id] = {
               text: toTruncatedPreview(toPreviewText(last.content)),
               updatedAt: last.timestamp || null,
+              hasHistory: true,
             }
           } catch (error) {
             console.error(`Failed to parse preview history for ${char.id}`, error)
@@ -354,6 +349,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
           initialPreviews[targetCharacterId] = {
             text: preview,
             updatedAt: row.created_at || null,
+            hasHistory: true,
           }
         })
 
@@ -419,6 +415,15 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
 
   useEffect(() => {
     if (messages.length <= 1) {
+      setHistoryPreviews((prev) => {
+        if (!prev[character.id]) {
+          return prev
+        }
+
+        const next = { ...prev }
+        delete next[character.id]
+        return next
+      })
       return
     }
 
@@ -433,6 +438,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
       [character.id]: {
         text: latestText,
         updatedAt: new Date().toISOString(),
+        hasHistory: true,
       },
     }))
   }, [messages, character.id])
@@ -715,13 +721,15 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
         },
       },
     ])
-    setHistoryPreviews((prev) => ({
-      ...prev,
-      [character.id]: {
-        text: toTruncatedPreview(character.greeting),
-        updatedAt: null,
-      },
-    }))
+    setHistoryPreviews((prev) => {
+      if (!prev[character.id]) {
+        return prev
+      }
+
+      const next = { ...prev }
+      delete next[character.id]
+      return next
+    })
   }
 
   const currentEmotion = messages.length > 0 && typeof messages[messages.length - 1].content !== "string"
@@ -741,6 +749,18 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
 
   const characterImage = character.images[imageKey] || character.images.normal
   const characterMeta = CHARACTER_UI_META[character.id]
+  const historyCharacterEntries = Object.entries(historyPreviews)
+    .filter(([, preview]) => preview.hasHistory)
+    .sort((a, b) => {
+      const dateA = a[1].updatedAt ? Date.parse(a[1].updatedAt) : 0
+      const dateB = b[1].updatedAt ? Date.parse(b[1].updatedAt) : 0
+      return dateB - dateA
+    })
+    .map(([characterId, preview]) => ({
+      character: CHARACTERS[characterId],
+      preview,
+    }))
+    .filter((item): item is { character: Character; preview: HistoryPreview } => Boolean(item.character))
 
   return (
     <div className="relative h-dvh overflow-hidden bg-[#e7dfd3] text-[#22242b]">
@@ -754,8 +774,13 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
             </div>
 
             <div className="mt-4 space-y-2 overflow-y-auto pr-1">
-              {sidebarCharacters.map((item) => {
-                const preview = historyPreviews[item.id]
+              {historyCharacterEntries.length === 0 && (
+                <div className="rounded-2xl border border-white/45 bg-white/72 px-3 py-4 text-xs text-[#7a7469]">
+                  아직 채팅 내역이 없습니다.
+                </div>
+              )}
+
+              {historyCharacterEntries.map(({ character: item, preview }) => {
                 const isActive = item.id === character.id
 
                 return (
@@ -778,11 +803,9 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
                       />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-bold text-[#2f3138]">{item.name}</p>
-                        <p className="mt-1 truncate text-xs text-[#6e685d]">
-                          {preview?.text || toTruncatedPreview(item.greeting)}
-                        </p>
+                        <p className="mt-1 truncate text-xs text-[#6e685d]">{preview.text}</p>
                         <p className="mt-2 text-[11px] text-[#9b9488]">
-                          {preview?.updatedAt ? "대화 기록 있음" : "새 대화"}
+                          {preview.updatedAt ? "대화 기록 있음" : "새 대화"}
                         </p>
                       </div>
                     </div>

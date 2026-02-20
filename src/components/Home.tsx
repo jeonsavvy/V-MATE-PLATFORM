@@ -1,9 +1,9 @@
-import { useMemo, useState } from "react"
-import { Character, CHARACTERS } from "@/lib/data"
+import { useEffect, useMemo, useState } from "react"
+import { Character, CHARACTERS, Message } from "@/lib/data"
 import { CHARACTER_FILTERS, CHARACTER_UI_META, CharacterFilter } from "@/lib/character-ui"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
-import { Search, LogOut } from "lucide-react"
+import { Search, LogOut, Sparkles } from "lucide-react"
 import { User as SupabaseUser } from "@supabase/supabase-js"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { toast } from "sonner"
@@ -23,12 +23,135 @@ interface HomeProps {
   onAuthRequest: () => void
 }
 
+interface RecentChatItem {
+  characterId: string
+  preview: string
+  updatedAt: string | null
+}
+
+const toPreviewText = (content: Message["content"]): string => {
+  if (typeof content === "string") {
+    return content
+  }
+  return typeof content.response === "string" ? content.response : ""
+}
+
+const parseSavedContentToPreview = (content: unknown): string => {
+  if (typeof content !== "string") {
+    if (content && typeof content === "object" && typeof (content as any).response === "string") {
+      return (content as any).response
+    }
+    return ""
+  }
+
+  try {
+    const parsed = JSON.parse(content)
+    if (typeof parsed === "string") return parsed
+    if (parsed && typeof parsed === "object" && typeof parsed.response === "string") {
+      return parsed.response
+    }
+    return content
+  } catch {
+    return content
+  }
+}
+
+const truncatePreview = (text: string, max = 42): string => {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim()
+  if (!normalized) return ""
+  if (normalized.length <= max) return normalized
+  return `${normalized.slice(0, max)}…`
+}
+
 export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
   const [searchQuery, setSearchQuery] = useState("")
-  const [activeFilter, setActiveFilter] = useState<CharacterFilter>("추천")
+  const [activeFilter, setActiveFilter] = useState<CharacterFilter>("전체")
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null)
+  const [recentChats, setRecentChats] = useState<RecentChatItem[]>([])
 
   const characters = useMemo(() => Object.values(CHARACTERS), [])
+
+  useEffect(() => {
+    const loadRecentChats = async () => {
+      if (!user) {
+        const localItems: RecentChatItem[] = []
+        characters.forEach((char) => {
+          const localKey = `chat_history_${char.id}`
+          const saved = localStorage.getItem(localKey)
+          if (!saved) return
+
+          try {
+            const parsed = JSON.parse(saved) as Message[]
+            if (!Array.isArray(parsed) || parsed.length === 0) return
+            const last = parsed[parsed.length - 1]
+            const preview = truncatePreview(toPreviewText(last.content))
+            if (!preview) return
+
+            localItems.push({
+              characterId: char.id,
+              preview,
+              updatedAt: last.timestamp || null,
+            })
+          } catch (error) {
+            console.error(`Failed to load local recent chats for ${char.id}`, error)
+          }
+        })
+
+        localItems.sort((a, b) => {
+          const dateA = a.updatedAt ? Date.parse(a.updatedAt) : 0
+          const dateB = b.updatedAt ? Date.parse(b.updatedAt) : 0
+          return dateB - dateA
+        })
+        setRecentChats(localItems)
+        return
+      }
+
+      if (!isSupabaseConfigured()) {
+        setRecentChats([])
+        return
+      }
+
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) {
+          setRecentChats([])
+          return
+        }
+
+        const { data, error } = await supabase
+          .from('chat_messages')
+          .select('character_id, content, created_at')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+
+        if (error) throw error
+
+        const map = new Map<string, RecentChatItem>()
+        data?.forEach((row: any) => {
+          const characterId = String(row.character_id || '')
+          if (!CHARACTERS[characterId] || map.has(characterId)) {
+            return
+          }
+
+          const preview = truncatePreview(parseSavedContentToPreview(row.content))
+          if (!preview) return
+
+          map.set(characterId, {
+            characterId,
+            preview,
+            updatedAt: row.created_at || null,
+          })
+        })
+
+        setRecentChats(Array.from(map.values()))
+      } catch (error) {
+        console.error("Failed to load recent chats", error)
+        setRecentChats([])
+      }
+    }
+
+    loadRecentChats()
+  }, [user, characters])
 
   const filteredCharacters = characters.filter((char) => {
     const meta = CHARACTER_UI_META[char.id]
@@ -38,7 +161,7 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
       char.name.toLowerCase().includes(query) ||
       meta.tags.some((tag) => tag.toLowerCase().includes(query)) ||
       meta.summary.toLowerCase().includes(query)
-    const matchesFilter = meta.filters.includes(activeFilter)
+    const matchesFilter = activeFilter === "전체" || meta.filters.includes(activeFilter)
     return matchesSearch && matchesFilter
   })
 
@@ -67,79 +190,104 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
         <div className="absolute -top-28 left-1/2 h-72 w-[34rem] -translate-x-1/2 rounded-full bg-[#d6cbba]/70 blur-[120px]" />
       </div>
 
-      <header className="sticky top-0 z-30 border-b border-white/40 bg-[#ece4d8]/75 px-4 py-3 shadow-[0_16px_34px_-30px_rgba(28,26,22,0.75)] backdrop-blur-xl">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3">
-          <div className="flex items-center gap-4">
-            <div className="shrink-0 text-2xl font-black tracking-tight text-[#ef4f42]">V-MATE</div>
+      <header className="sticky top-0 z-30 border-b border-white/40 bg-[#ece4d8]/80 px-4 py-3 shadow-[0_16px_34px_-30px_rgba(28,26,22,0.75)] backdrop-blur-xl">
+        <div className="mx-auto flex max-w-6xl items-center gap-3">
+          <div className="shrink-0 text-2xl font-black tracking-tight text-[#ef4f42]">V-MATE</div>
 
-            <div className="ml-auto hidden max-w-sm flex-1 md:block">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7d756b]" />
-                <Input
-                  placeholder="검색어를 입력해 주세요"
-                  className="h-10 rounded-full border-[#c8beaf] bg-white/75 pl-9 text-[#2a2b30] placeholder:text-[#847c72] shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition-all focus:border-[#e05d4e] focus:bg-white"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-            </div>
-
+          <div className="relative min-w-0 flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7d756b]" />
+            <Input
+              placeholder="검색어를 입력해 주세요"
+              className="h-10 rounded-full border-[#c8beaf] bg-white/75 pl-9 text-[#2a2b30] placeholder:text-[#847c72] shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition-all focus:border-[#e05d4e] focus:bg-white"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="relative flex-1 md:hidden">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#7d756b]" />
-              <Input
-                placeholder="검색어를 입력해 주세요"
-                className="h-10 rounded-full border-[#c8beaf] bg-white/75 pl-9 text-[#2a2b30] placeholder:text-[#847c72] shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition-all focus:border-[#e05d4e] focus:bg-white"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-
-            <div className="ml-auto">
-              {user ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <div className="h-8 w-8 cursor-pointer rounded-full bg-gradient-to-tr from-[#9d8ab9] to-[#cba2bb] p-[2px]">
-                      <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-white">
-                        <img
-                          src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`}
-                          alt="User"
-                          className="h-full w-full object-cover"
-                        />
-                      </div>
+          <div className="shrink-0">
+            {user ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <div className="h-8 w-8 cursor-pointer rounded-full bg-gradient-to-tr from-[#9d8ab9] to-[#cba2bb] p-[2px]">
+                    <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-white">
+                      <img
+                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`}
+                        alt="User"
+                        className="h-full w-full object-cover"
+                      />
                     </div>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="border-[#cbc2b2] bg-[#f6f2eb]/98 text-[#21232a] shadow-[0_18px_35px_-26px_rgba(28,27,23,0.75)]">
-                    <DropdownMenuLabel>
-                      <div className="flex flex-col">
-                        <span>{user.user_metadata?.name || "사용자"}</span>
-                        <span className="text-xs font-normal text-[#8f8b82]">{user.email}</span>
-                      </div>
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator className="bg-black/10" />
-                    <DropdownMenuItem onClick={handleSignOut} className="text-red-500 focus:bg-red-500/10 focus:text-red-500">
-                      <LogOut className="mr-2 h-4 w-4" />
-                      로그아웃
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : (
-                <Button
-                  onClick={onAuthRequest}
-                  className="rounded-full bg-gradient-to-r from-[#2f3138] to-[#49444f] px-6 text-white shadow-[0_12px_24px_-16px_rgba(23,24,29,0.9)] transition-all hover:brightness-110"
-                >
-                  로그인
-                </Button>
-              )}
-            </div>
+                  </div>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="border-[#cbc2b2] bg-[#f6f2eb]/98 text-[#21232a] shadow-[0_18px_35px_-26px_rgba(28,27,23,0.75)]">
+                  <DropdownMenuLabel>
+                    <div className="flex flex-col">
+                      <span>{user.user_metadata?.name || "사용자"}</span>
+                      <span className="text-xs font-normal text-[#8f8b82]">{user.email}</span>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator className="bg-black/10" />
+                  <DropdownMenuItem onClick={handleSignOut} className="text-red-500 focus:bg-red-500/10 focus:text-red-500">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    로그아웃
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button
+                onClick={onAuthRequest}
+                className="h-10 rounded-full bg-[#f55f53] px-5 text-white shadow-[0_12px_24px_-16px_rgba(245,95,83,0.92)] transition hover:bg-[#e85347]"
+              >
+                로그인
+              </Button>
+            )}
           </div>
         </div>
       </header>
 
       <main className="relative z-10 mx-auto max-w-6xl space-y-8 px-4 py-5 md:py-6">
         <section className="space-y-3">
+          <div className="rounded-2xl border border-white/45 bg-white/65 p-4 shadow-[0_20px_35px_-28px_rgba(24,22,19,0.85)]">
+            <div className="flex items-center gap-2 text-[#5d574d]">
+              <Sparkles className="h-4 w-4 text-[#f55f53]" />
+              <p className="text-sm font-semibold">오늘의 빠른 시작</p>
+            </div>
+            <p className="mt-2 text-sm text-[#6d665d]">
+              최근 채팅은 아래에서 바로 이어서 대화할 수 있어요.
+            </p>
+          </div>
+
+          {recentChats.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-[#2b2d35]">최근 채팅</h3>
+                <p className="text-xs text-[#80786e]">{recentChats.length}개</p>
+              </div>
+
+              <div className="-mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-1">
+                {recentChats.map((item) => {
+                  const char = CHARACTERS[item.characterId]
+                  if (!char) return null
+
+                  return (
+                    <button
+                      key={item.characterId}
+                      onClick={() => onCharacterSelect(char)}
+                      className="min-w-[240px] snap-start rounded-2xl border border-white/45 bg-white/72 p-3 text-left shadow-[0_14px_24px_-20px_rgba(23,22,20,0.72)] transition hover:-translate-y-0.5 hover:border-[#e9b4ae]"
+                    >
+                      <div className="flex items-center gap-3">
+                        <img src={char.images.normal} alt={char.name} className="h-12 w-12 rounded-xl object-cover object-top" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-bold text-[#2f3138]">{char.name}</p>
+                          <p className="mt-1 truncate text-xs text-[#6e685d]">{item.preview}</p>
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center gap-2">
             {CHARACTER_FILTERS.map((filter) => {
               const isActive = activeFilter === filter
@@ -158,7 +306,9 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
               )
             })}
           </div>
+        </section>
 
+        <section className="space-y-3">
           {heroCharacters.length > 0 && (
             <div className="-mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-1 md:mx-0 md:grid md:overflow-visible md:px-0 md:pb-0 md:grid-cols-[1.5fr_1fr_1fr]">
               {heroCharacters.map((char, index) => {
@@ -244,6 +394,10 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
           )}
         </section>
       </main>
+
+      <footer className="relative z-10 px-4 pb-6 text-center text-xs text-[#7f776c]">
+        © 2026 V-MATE. All rights reserved.
+      </footer>
 
       {selectedCharacter && selectedCharacterMeta && (
         <CharacterDetailSheet

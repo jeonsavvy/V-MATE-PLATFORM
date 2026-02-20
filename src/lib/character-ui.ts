@@ -1,4 +1,4 @@
-export type CharacterFilter = "추천" | "2차 창작"
+export type CharacterFilter = "전체" | "추천" | "2차 창작"
 
 export interface CharacterUiMeta {
   badge?: string
@@ -10,7 +10,7 @@ export interface CharacterUiMeta {
   filters: CharacterFilter[]
 }
 
-export const CHARACTER_FILTERS: CharacterFilter[] = ["추천", "2차 창작"]
+export const CHARACTER_FILTERS: CharacterFilter[] = ["전체", "추천", "2차 창작"]
 
 export const CHARACTER_UI_META: Record<string, CharacterUiMeta> = {
   mika: {
