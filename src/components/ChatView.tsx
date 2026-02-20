@@ -433,16 +433,16 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
           emotion: "normal",
           inner_heart:
             character.id === "mika"
-              ? "선생님... 연결이 안 돼? 나랑 말하는 거 싫어하는 거 아니지?"
+              ? "선생님 기다리게 했지... 이번엔 제대로 집중해서 들을게."
               : character.id === "alice"
-                ? "연결이 끊어졌나... 다시 시도해보자."
-                : "어? 연결 끊긴 것 같은데?",
+                ? "통신이 잠시 흔들렸군... 다시 맞춰보자."
+                : "신호가 잠깐 튄 듯.",
           response:
             character.id === "mika"
-              ? "선생님... 인터넷 연결 확인해줄 수 있어? 나랑 대화하고 싶은 거 맞지? ☆"
+              ? "선생님, 방금 신호가 잠깐 흔들렸어. 한 번만 다시 말해줘. ☆"
               : character.id === "alice"
-                ? "네트워크 연결에 문제가 있는 것 같다. 연결을 확인한 후 다시 시도해달라."
-                : "어? 연결이 안 되는 것 같은데... 다시 말해봐.",
+                ? "통신이 일시적으로 불안정했다. 같은 내용을 다시 전해주겠는가."
+                : "지금 신호 잠깐 튐. 다시 한 번만.",
         }
       } else if (errorMsg.includes("API 키") || errorMsg.includes("만료")) {
         parsed = {
@@ -591,143 +591,144 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
   const characterImage = character.images[imageKey] || character.images.normal
 
   return (
-    <div className="relative flex h-screen overflow-hidden bg-[#ece9e1] text-[#22242b]">
-      <div className="absolute inset-0 z-0">
-        <img
-          src={characterImage}
-          alt={character.name}
-          className="size-full object-cover object-top opacity-25 transition-opacity duration-500 lg:w-[44%] lg:opacity-95"
-        />
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#ece9e1]/90 to-[#ece9e1] lg:via-[#ece9e1]/55" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_72%_8%,rgba(152,136,166,0.18),transparent_34%),radial-gradient(circle_at_88%_92%,rgba(176,193,208,0.15),transparent_36%)]" />
-      </div>
+    <div className="relative h-screen overflow-hidden bg-[#ece9e1] text-[#22242b]">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(160,148,178,0.18),transparent_32%),radial-gradient(circle_at_88%_85%,rgba(178,192,206,0.14),transparent_36%)]" />
 
-      <div className="relative z-10 flex h-full w-full flex-col lg:ml-auto lg:w-[56%]">
-        <header className="flex items-center justify-between border-b border-black/10 bg-[#f5f1e9]/85 p-4 backdrop-blur-xl lg:p-6">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              onClick={onBack}
-              className="text-[#666259] hover:bg-black/5 hover:text-[#2f3138]"
-            >
-              <ArrowLeft className="mr-2 h-5 w-5" />
-              <span className="hidden sm:inline">홈으로</span>
-            </Button>
-            <div>
-              <h1 className="flex items-center gap-2 text-xl font-bold text-[#2d3039]">
-                <span className="font-black tracking-tight text-[#3c3f49]">V-MATE</span>{" "}
-                <span className="hidden text-[#72706a] sm:inline">PLATFORM</span>
-              </h1>
+      <div className="relative z-10 mx-auto grid h-full max-w-[1400px] lg:grid-cols-[360px_1fr]">
+        <aside className="hidden border-r border-black/10 bg-[#ece9e1]/60 p-6 lg:flex lg:flex-col">
+          <div className="overflow-hidden rounded-3xl border border-black/10 bg-white/70 shadow-[0_20px_40px_-30px_rgba(32,34,41,0.45)]">
+            <img src={characterImage} alt={character.name} className="aspect-[4/5] w-full object-cover object-top" />
+            <div className="border-t border-black/10 p-4">
+              <p className="text-xs uppercase tracking-[0.24em] text-[#8f8b82]">interactive persona</p>
+              <p className="mt-2 text-xl font-black text-[#2f3138]">{character.name}</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="hidden text-right sm:block">
-              <p className="text-sm font-bold text-[#2d3039]">{character.name}</p>
-              <p className="text-xs uppercase tracking-[0.22em] text-[#8f8b82]">interactive persona</p>
-            </div>
-            <Button
-              variant="ghost"
-              onClick={handleClearChat}
-              className="text-[#7a756d] hover:bg-red-500/10 hover:text-red-500"
-              title="대화 초기화"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-            <select
-              value={character.id}
-              onChange={(e) => onCharacterChange(e.target.value)}
-              className="cursor-pointer rounded-lg border border-black/10 bg-white/80 px-4 py-2 text-xs uppercase tracking-wider text-[#5f635f] outline-none transition hover:bg-white focus:border-[#9d8ab9]"
-            >
-              <option value="mika">Misono Mika</option>
-              <option value="alice">Alice Zuberg</option>
-              <option value="kael">Kael</option>
-            </select>
+          <div className="mt-auto rounded-2xl border border-black/10 bg-white/70 p-4 text-xs text-[#77736b]">
+            감정과 속마음이 분리되어 표시됩니다.
           </div>
-        </header>
+        </aside>
 
-        <div
-          ref={scrollRef}
-          className="flex-1 space-y-6 overflow-y-auto p-4 scroll-smooth lg:p-8"
-        >
-          {messages.map((msg) => {
-            const isUser = msg.role === "user"
-            const content = typeof msg.content === "string" ? msg.content : msg.content.response
-            const innerHeart = typeof msg.content === "string" ? null : msg.content.inner_heart
-
-            return (
-              <div
-                key={msg.id}
-                className={cn(
-                  "fade-in flex w-full",
-                  isUser ? "justify-end" : "justify-start"
-                )}
+        <div className="flex h-full flex-col">
+          <header className="flex items-center justify-between border-b border-black/10 bg-[#f5f1e9]/85 p-4 backdrop-blur-xl lg:p-6">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                onClick={onBack}
+                className="text-[#666259] hover:bg-black/5 hover:text-[#2f3138]"
               >
+                <ArrowLeft className="mr-2 h-5 w-5" />
+                <span className="hidden sm:inline">홈으로</span>
+              </Button>
+              <div className="lg:hidden">
+                <p className="text-sm font-bold text-[#2f3138]">{character.name}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                onClick={handleClearChat}
+                className="text-[#7a756d] hover:bg-red-500/10 hover:text-red-500"
+                title="대화 초기화"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+              <select
+                value={character.id}
+                onChange={(e) => onCharacterChange(e.target.value)}
+                className="cursor-pointer rounded-lg border border-black/10 bg-white/80 px-4 py-2 text-xs uppercase tracking-wider text-[#5f635f] outline-none transition hover:bg-white focus:border-[#9d8ab9]"
+              >
+                <option value="mika">Misono Mika</option>
+                <option value="alice">Alice Zuberg</option>
+                <option value="kael">Kael</option>
+              </select>
+            </div>
+          </header>
+
+          <div
+            ref={scrollRef}
+            className="flex-1 space-y-6 overflow-y-auto p-4 scroll-smooth lg:p-8"
+          >
+            {messages.map((msg) => {
+              const isUser = msg.role === "user"
+              const content = typeof msg.content === "string" ? msg.content : msg.content.response
+              const innerHeart = typeof msg.content === "string" ? null : msg.content.inner_heart
+
+              return (
                 <div
+                  key={msg.id}
                   className={cn(
-                    "flex max-w-[86%] gap-3 md:max-w-[68%]",
-                    isUser ? "flex-row-reverse" : "flex-row"
+                    "fade-in flex w-full",
+                    isUser ? "justify-end" : "justify-start"
                   )}
                 >
-                  {!isUser && (
-                    <Avatar
-                      src={characterImage}
-                      alt={character.name}
-                      fallback={character.name[0]}
-                      className="size-10 shrink-0 border border-black/10 object-cover object-top"
-                    />
-                  )}
-
                   <div
                     className={cn(
-                      "rounded-2xl p-4 text-sm leading-relaxed shadow-[0_14px_26px_-20px_rgba(34,35,43,0.35)]",
-                      isUser
-                        ? "rounded-br-sm bg-[#3d3f48] text-[#f8f7f4]"
-                        : "rounded-bl-sm border border-black/10 bg-white/82 text-[#2a2d35] backdrop-blur-md"
+                      "flex max-w-[88%] gap-3 md:max-w-[70%]",
+                      isUser ? "flex-row-reverse" : "flex-row"
                     )}
                   >
-                    {!isUser && innerHeart && (
-                      <div className="mb-3 rounded-xl border border-[#dbccd9] bg-[#f7edf5] p-3 text-xs font-semibold text-[#7a5671]">
-                        💭 {innerHeart}
-                      </div>
+                    {!isUser && (
+                      <Avatar
+                        src={characterImage}
+                        alt={character.name}
+                        fallback={character.name[0]}
+                        className="size-10 shrink-0 border border-black/10 object-cover object-top"
+                      />
                     )}
-                    <div className="whitespace-pre-wrap">{content}</div>
+
+                    <div
+                      className={cn(
+                        "rounded-2xl p-4 text-sm leading-relaxed shadow-[0_14px_26px_-20px_rgba(34,35,43,0.35)]",
+                        isUser
+                          ? "rounded-br-sm bg-[#3d3f48] text-[#f8f7f4]"
+                          : "rounded-bl-sm border border-black/10 bg-white/82 text-[#2a2d35] backdrop-blur-md"
+                      )}
+                    >
+                      {!isUser && innerHeart && (
+                        <div className="mb-3 rounded-xl border border-[#dbccd9] bg-[#f7edf5] p-3 text-xs font-semibold text-[#7a5671]">
+                          💭 {innerHeart}
+                        </div>
+                      )}
+                      <div className="whitespace-pre-wrap">{content}</div>
+                    </div>
                   </div>
                 </div>
+              )
+            })}
+            {isLoading && (
+              <div className="fade-in flex justify-start">
+                <div className="rounded-2xl rounded-bl-sm border border-black/10 bg-white/82 px-5 py-3 text-xs text-[#7b766d]">
+                  <span className="inline-flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8] [animation-delay:-0.2s]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8] [animation-delay:-0.1s]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8]" />
+                  </span>
+                </div>
               </div>
-            )
-          })}
-          {isLoading && (
-            <div className="fade-in flex justify-start">
-              <div className="rounded-2xl rounded-bl-sm border border-black/10 bg-white/82 px-5 py-3 text-xs text-[#7b766d]">
-                <span className="inline-flex items-center gap-1">
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8] [animation-delay:-0.2s]" />
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8] [animation-delay:-0.1s]" />
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8]" />
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
 
-        <div className="bg-gradient-to-t from-[#ece9e1] via-[#ece9e1]/95 to-transparent p-4 pb-8 lg:p-6">
-          <div className="relative mx-auto max-w-4xl">
-            <div className="relative flex items-center gap-2 rounded-full border border-black/10 bg-white/85 p-2 pl-6 shadow-[0_16px_30px_-20px_rgba(42,45,53,0.45)] backdrop-blur-xl">
-              <Input
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
-                placeholder="대화를 시작하세요..."
-                disabled={isLoading}
-                className="h-10 flex-1 border-0 bg-transparent text-[#2a2c34] placeholder:text-[#8d887f] focus-visible:ring-0"
-              />
-              <Button
-                onClick={handleSendMessage}
-                disabled={isLoading || !inputValue.trim()}
-                className="size-10 shrink-0 rounded-full bg-[#3b3e47] text-white hover:bg-[#2f3138]"
-              >
-                <Send className="size-4" />
-              </Button>
+          <div className="bg-gradient-to-t from-[#ece9e1] via-[#ece9e1]/95 to-transparent p-4 pb-8 lg:p-6">
+            <div className="mx-auto max-w-4xl rounded-2xl border border-black/10 bg-white/85 p-2 shadow-[0_16px_30px_-20px_rgba(42,45,53,0.45)] backdrop-blur-xl">
+              <div className="flex items-center gap-2 pl-3">
+                <Input
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
+                  placeholder="메시지를 입력하세요"
+                  disabled={isLoading}
+                  className="h-10 flex-1 border-0 bg-transparent text-[#2a2c34] placeholder:text-[#8d887f] focus-visible:ring-0"
+                />
+                <Button
+                  onClick={handleSendMessage}
+                  disabled={isLoading || !inputValue.trim()}
+                  className="size-10 shrink-0 rounded-xl bg-[#3b3e47] text-white hover:bg-[#2f3138]"
+                >
+                  <Send className="size-4" />
+                </Button>
+              </div>
             </div>
           </div>
         </div>

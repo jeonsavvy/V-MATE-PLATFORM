@@ -16,7 +16,7 @@ const shouldUseGeminiContextCache = () =>
 
 const getGeminiContextCacheConfig = () => ({
     ttlSeconds: Number(process.env.GEMINI_CONTEXT_CACHE_TTL_SECONDS || 21600),
-    createTimeoutMs: Number(process.env.GEMINI_CONTEXT_CACHE_CREATE_TIMEOUT_MS || 1800),
+    createTimeoutMs: Number(process.env.GEMINI_CONTEXT_CACHE_CREATE_TIMEOUT_MS || 900),
     warmupMinChars: Number(process.env.GEMINI_CONTEXT_CACHE_WARMUP_MIN_CHARS || 1200),
     autoCreateEnabled: String(process.env.GEMINI_CONTEXT_CACHE_AUTO_CREATE || 'true').toLowerCase() !== 'false',
 });
@@ -62,11 +62,42 @@ const parseCachedContentName = (value) => {
     return isValidCachedContentName(text) ? text : null;
 };
 
+const buildUpstreamFallbackPayload = (characterId) => {
+    if (characterId === 'mika') {
+        return {
+            emotion: 'normal',
+            inner_heart: '선생님이 기다렸을 텐데... 잠깐 숨 고르고 다시 집중하자.',
+            response: '선생님, 방금 신호가 살짝 흔들렸어. 한 번만 다시 말해줘. 이번엔 제대로 들을게.',
+        };
+    }
+
+    if (characterId === 'alice') {
+        return {
+            emotion: 'normal',
+            inner_heart: '연결이 순간 흔들렸군. 침착하게 다시 정비하면 된다.',
+            response: '통신이 잠시 불안정했다. 같은 내용을 한 번 더 전해주겠는가.',
+        };
+    }
+
+    if (characterId === 'kael') {
+        return {
+            emotion: 'normal',
+            inner_heart: '아... 튕겼네. 기다리게 해서 미안한데 다시 받으면 된다.',
+            response: '지금 신호 잠깐 튐. 한 번만 다시 보내줘.',
+        };
+    }
+
+    return {
+        emotion: 'normal',
+        inner_heart: '응답 연결이 잠시 불안정했다.',
+        response: '연결이 잠시 흔들렸어요. 같은 내용을 한 번만 다시 보내주세요.',
+    };
+};
+
 const sleep = async (ms) => {
     if (!ms || ms <= 0) return;
     await new Promise((resolve) => {
-        const timer = setTimeout(resolve, ms);
-        timer.unref?.();
+        setTimeout(resolve, ms);
     });
 };
 
@@ -80,7 +111,6 @@ const createPromptCacheEntry = async ({
     const { ttlSeconds, createTimeoutMs } = getGeminiContextCacheConfig();
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), createTimeoutMs);
-    timeoutId.unref?.();
 
     try {
         const response = await fetch(
@@ -367,8 +397,8 @@ export const handler = async (event, context) => {
         const MAX_HISTORY_MESSAGES = Number(process.env.GEMINI_HISTORY_MESSAGES || 6);
         const MAX_PART_CHARS = Number(process.env.GEMINI_MAX_PART_CHARS || 1200);
         const MAX_SYSTEM_PROMPT_CHARS = Number(process.env.GEMINI_MAX_SYSTEM_PROMPT_CHARS || 3500);
-        const MODEL_TIMEOUT_MS = Number(process.env.GEMINI_MODEL_TIMEOUT_MS || 9000);
-        const FUNCTION_TOTAL_TIMEOUT_MS = Number(process.env.FUNCTION_TOTAL_TIMEOUT_MS || 15000);
+        const MODEL_TIMEOUT_MS = Number(process.env.GEMINI_MODEL_TIMEOUT_MS || 11000);
+        const FUNCTION_TOTAL_TIMEOUT_MS = Number(process.env.FUNCTION_TOTAL_TIMEOUT_MS || 17000);
         const FUNCTION_TIMEOUT_GUARD_MS = Number(process.env.FUNCTION_TIMEOUT_GUARD_MS || 1500);
         const GEMINI_RETRY_BACKOFF_MS = Number(process.env.GEMINI_RETRY_BACKOFF_MS || 250);
         const clampText = (value) => String(value ?? '').slice(0, MAX_PART_CHARS);
@@ -435,9 +465,11 @@ export const handler = async (event, context) => {
         if (canUseContextCache && !cachedContentName) {
             const { warmupMinChars, autoCreateEnabled } = getGeminiContextCacheConfig();
             const hasEnoughBudgetForCacheCreate = getRemainingBudget() > FUNCTION_TIMEOUT_GUARD_MS + 3000;
+            const isFirstTurn = !Array.isArray(messageHistory) || messageHistory.length === 0;
             const shouldCreateInline =
                 autoCreateEnabled &&
                 hasEnoughBudgetForCacheCreate &&
+                isFirstTurn &&
                 trimmedSystemPrompt.length >= warmupMinChars;
 
             if (shouldCreateInline) {
@@ -477,7 +509,6 @@ export const handler = async (event, context) => {
 
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), attemptTimeoutMs);
-            timeoutId.unref?.();
 
             try {
                 const requestPayload = {
@@ -602,12 +633,31 @@ export const handler = async (event, context) => {
         }
 
         if (!geminiResponse || !geminiData) {
+            const upstreamErrorCode = lastModelError?.code || 'UPSTREAM_UNKNOWN_ERROR';
+            const shouldUseFallbackPayload =
+                upstreamErrorCode === 'UPSTREAM_CONNECTION_FAILED' ||
+                upstreamErrorCode === 'UPSTREAM_TIMEOUT' ||
+                upstreamErrorCode === 'FUNCTION_BUDGET_TIMEOUT';
+
+            if (shouldUseFallbackPayload) {
+                const fallbackPayload = buildUpstreamFallbackPayload(normalizedCharacterId);
+                return {
+                    statusCode: 200,
+                    headers,
+                    body: JSON.stringify({
+                        text: JSON.stringify(fallbackPayload),
+                        cachedContent: cachedContentName || null,
+                        error_code: upstreamErrorCode,
+                    }),
+                };
+            }
+
             return {
                 statusCode: lastModelError?.status || 503,
                 headers,
                 body: JSON.stringify({
                     error: lastModelError?.message || 'Model call failed after retry. Please try again later.',
-                    error_code: lastModelError?.code || 'UPSTREAM_UNKNOWN_ERROR',
+                    error_code: upstreamErrorCode,
                 }),
             };
         }
