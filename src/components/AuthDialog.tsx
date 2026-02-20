@@ -109,20 +109,20 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md border-black/10 bg-[#f5f1e9]/95 text-[#1f2128] backdrop-blur-xl">
+      <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-md border-white/45 bg-[#f2ebe0]/88 text-[#1f2128] shadow-[0_30px_56px_-34px_rgba(18,17,15,0.82)] backdrop-blur-2xl">
         <DialogHeader>
-          <DialogTitle className="text-center text-2xl font-black tracking-tight text-[#2d3039]">
+          <DialogTitle className="text-center text-3xl font-black tracking-[0.03em] text-[#2d3039]">
             V-MATE
           </DialogTitle>
-          <DialogDescription className="text-center text-[#7f7a72]">
+          <DialogDescription className="text-center text-[#716a61]">
             로그인하여 대화 내역을 저장하고 동기화하세요.
           </DialogDescription>
         </DialogHeader>
         
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="mb-4 grid w-full grid-cols-2 bg-[#e8e2d7]">
-            <TabsTrigger value="signin" className="data-[state=active]:bg-[#3a3d45] data-[state=active]:text-white">로그인</TabsTrigger>
-            <TabsTrigger value="signup" className="data-[state=active]:bg-[#3a3d45] data-[state=active]:text-white">회원가입</TabsTrigger>
+          <TabsList className="mb-4 grid w-full grid-cols-2 border border-[#d8ccba] bg-[#ebe3d7]/80 p-1">
+            <TabsTrigger value="signin" className="rounded-md text-[#6c655b] transition data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3a3d45] data-[state=active]:to-[#4a454f] data-[state=active]:text-white">로그인</TabsTrigger>
+            <TabsTrigger value="signup" className="rounded-md text-[#6c655b] transition data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3a3d45] data-[state=active]:to-[#4a454f] data-[state=active]:text-white">회원가입</TabsTrigger>
           </TabsList>
           
           <TabsContent value="signin">
@@ -136,7 +136,7 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="border-black/10 bg-white/80 text-[#22242b] placeholder:text-[#8f8b82]"
+                  className="border-[#d1c4b3] bg-white/75 text-[#22242b] placeholder:text-[#8f8b82] focus-visible:border-[#e05d4e]"
                 />
               </div>
               <div className="space-y-2">
@@ -147,10 +147,10 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="border-black/10 bg-white/80 text-[#22242b]"
+                  className="border-[#d1c4b3] bg-white/75 text-[#22242b] focus-visible:border-[#e05d4e]"
                 />
               </div>
-              <Button type="submit" className="w-full bg-[#3a3d45] text-white hover:bg-[#2d2f36]" disabled={isLoading}>
+              <Button type="submit" className="w-full bg-gradient-to-r from-[#3a3d45] to-[#4a454f] text-white shadow-[0_14px_26px_-18px_rgba(26,27,33,0.95)] transition hover:brightness-110" disabled={isLoading}>
                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 로그인
               </Button>
@@ -167,7 +167,7 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required
-                  className="border-black/10 bg-white/80 text-[#22242b] placeholder:text-[#8f8b82]"
+                  className="border-[#d1c4b3] bg-white/75 text-[#22242b] placeholder:text-[#8f8b82] focus-visible:border-[#e05d4e]"
                 />
               </div>
               <div className="space-y-2">
@@ -179,7 +179,7 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="border-black/10 bg-white/80 text-[#22242b] placeholder:text-[#8f8b82]"
+                  className="border-[#d1c4b3] bg-white/75 text-[#22242b] placeholder:text-[#8f8b82] focus-visible:border-[#e05d4e]"
                 />
               </div>
               <div className="space-y-2">
@@ -191,10 +191,10 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   minLength={6}
-                  className="border-black/10 bg-white/80 text-[#22242b]"
+                  className="border-[#d1c4b3] bg-white/75 text-[#22242b] focus-visible:border-[#e05d4e]"
                 />
               </div>
-              <Button type="submit" className="w-full bg-[#3a3d45] text-white hover:bg-[#2d2f36]" disabled={isLoading}>
+              <Button type="submit" className="w-full bg-gradient-to-r from-[#3a3d45] to-[#4a454f] text-white shadow-[0_14px_26px_-18px_rgba(26,27,33,0.95)] transition hover:brightness-110" disabled={isLoading}>
                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 회원가입
               </Button>

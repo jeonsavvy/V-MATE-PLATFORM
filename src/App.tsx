@@ -51,7 +51,7 @@ function App() {
   const character = currentCharId ? CHARACTERS[currentCharId] : null
 
   return (
-    <div className="h-screen w-screen bg-black">
+    <div className="min-h-dvh w-full overflow-x-hidden bg-[#e7dfd3]">
       {currentView === "home" ? (
         <Home 
           onCharacterSelect={handleCharacterSelect} 

@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Avatar } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import { Send, ArrowLeft, Trash2 } from "lucide-react"
+import { CHARACTER_UI_META } from "@/lib/character-ui"
 import { User as SupabaseUser } from "@supabase/supabase-js"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 
@@ -589,29 +590,53 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
   }
 
   const characterImage = character.images[imageKey] || character.images.normal
+  const characterMeta = CHARACTER_UI_META[character.id]
+  const latestPreviewMessage = [...messages].reverse().find((msg) => msg.id !== "greeting")
+  const previewText = latestPreviewMessage
+    ? typeof latestPreviewMessage.content === "string"
+      ? latestPreviewMessage.content
+      : latestPreviewMessage.content.response
+    : character.greeting
 
   return (
-    <div className="relative h-screen overflow-hidden bg-[#ece9e1] text-[#22242b]">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(160,148,178,0.18),transparent_32%),radial-gradient(circle_at_88%_85%,rgba(178,192,206,0.14),transparent_36%)]" />
+    <div className="relative h-dvh overflow-hidden bg-[#e7dfd3] text-[#22242b]">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(149,131,177,0.18),transparent_34%),radial-gradient(circle_at_84%_82%,rgba(129,157,179,0.14),transparent_38%)]" />
 
-      <div className="relative z-10 mx-auto grid h-full max-w-[1400px] lg:grid-cols-[360px_1fr]">
-        <aside className="hidden border-r border-black/10 bg-[#ece9e1]/60 p-6 lg:flex lg:flex-col">
-          <div className="overflow-hidden rounded-3xl border border-black/10 bg-white/70 shadow-[0_20px_40px_-30px_rgba(32,34,41,0.45)]">
-            <img src={characterImage} alt={character.name} className="aspect-[4/5] w-full object-cover object-top" />
-            <div className="border-t border-black/10 p-4">
-              <p className="text-xs uppercase tracking-[0.24em] text-[#8f8b82]">interactive persona</p>
-              <p className="mt-2 text-xl font-black text-[#2f3138]">{character.name}</p>
+      <div className="relative z-10 mx-auto grid h-full w-full max-w-[1500px] lg:grid-cols-[300px_minmax(0,1fr)]">
+        <aside className="hidden h-full border-r border-white/45 bg-[#eee7db]/75 p-4 backdrop-blur-xl lg:block">
+          <div className="flex h-full flex-col">
+            <div className="flex items-center justify-between px-2">
+              <p className="text-sm font-bold text-[#2f3138]">채팅 내역</p>
+              <button disabled className="text-xs font-semibold text-[#8a8479]">
+                편집
+              </button>
             </div>
-          </div>
 
-          <div className="mt-auto rounded-2xl border border-black/10 bg-white/70 p-4 text-xs text-[#77736b]">
-            감정과 속마음이 분리되어 표시됩니다.
+            <button className="mt-4 rounded-2xl border border-white/45 bg-white/72 p-3 text-left shadow-[0_14px_24px_-20px_rgba(23,22,20,0.72)] transition hover:border-[#e9b4ae]">
+              <div className="flex items-start gap-3">
+                <Avatar
+                  src={characterImage}
+                  alt={character.name}
+                  fallback={character.name[0]}
+                  className="size-10 border border-black/10 object-cover object-top"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-[#2f3138]">{character.name}</p>
+                  <p className="mt-1 truncate text-xs text-[#6e685d]">{previewText}</p>
+                  <p className="mt-2 text-[11px] text-[#9b9488]">{messages.length > 1 ? "방금 업데이트" : "새 대화"}</p>
+                </div>
+              </div>
+            </button>
+
+            <div className="mt-auto rounded-2xl border border-white/45 bg-white/70 p-4 text-xs leading-relaxed text-[#6f695e]">
+              {characterMeta.summary}
+            </div>
           </div>
         </aside>
 
-        <div className="flex h-full flex-col">
-          <header className="flex items-center justify-between border-b border-black/10 bg-[#f5f1e9]/85 p-4 backdrop-blur-xl lg:p-6">
-            <div className="flex items-center gap-3">
+        <div className="flex h-full min-w-0 flex-col">
+          <header className="flex items-center justify-between border-b border-white/45 bg-[#efe8dc]/78 p-3 shadow-[0_16px_26px_-24px_rgba(23,22,19,0.8)] backdrop-blur-xl lg:p-5">
+            <div className="flex min-w-0 items-center gap-3">
               <Button
                 variant="ghost"
                 onClick={onBack}
@@ -620,12 +645,14 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
                 <ArrowLeft className="mr-2 h-5 w-5" />
                 <span className="hidden sm:inline">홈으로</span>
               </Button>
-              <div className="lg:hidden">
-                <p className="text-sm font-bold text-[#2f3138]">{character.name}</p>
+
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-[#2f3138]">{character.name}</p>
+                <p className="truncate text-xs text-[#857d72]">{characterMeta.tags.join(" · ")}</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <Button
                 variant="ghost"
                 onClick={handleClearChat}
@@ -637,7 +664,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
               <select
                 value={character.id}
                 onChange={(e) => onCharacterChange(e.target.value)}
-                className="cursor-pointer rounded-lg border border-black/10 bg-white/80 px-4 py-2 text-xs uppercase tracking-wider text-[#5f635f] outline-none transition hover:bg-white focus:border-[#9d8ab9]"
+                className="max-w-[132px] cursor-pointer rounded-xl border border-[#c7bcac] bg-white/78 px-2.5 py-1.5 text-[11px] uppercase tracking-[0.08em] text-[#5f635f] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] outline-none transition hover:bg-white focus:border-[#e05d4e] sm:max-w-none sm:px-4 sm:py-2 sm:text-xs sm:tracking-wider"
               >
                 <option value="mika">Misono Mika</option>
                 <option value="alice">Alice Zuberg</option>
@@ -646,85 +673,88 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
             </div>
           </header>
 
-          <div
-            ref={scrollRef}
-            className="flex-1 space-y-6 overflow-y-auto p-4 scroll-smooth lg:p-8"
-          >
-            {messages.map((msg) => {
-              const isUser = msg.role === "user"
-              const content = typeof msg.content === "string" ? msg.content : msg.content.response
-              const innerHeart = typeof msg.content === "string" ? null : msg.content.inner_heart
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-5 scroll-smooth lg:px-8 lg:py-7">
+            <div className="mx-auto w-full max-w-4xl space-y-6">
+              <p className="text-center text-xs text-[#8f887d]">이 대화는 AI로 생성된 가상의 이야기입니다</p>
 
-              return (
-                <div
-                  key={msg.id}
-                  className={cn(
-                    "fade-in flex w-full",
-                    isUser ? "justify-end" : "justify-start"
-                  )}
-                >
+              {messages.map((msg) => {
+                const isUser = msg.role === "user"
+                const content = typeof msg.content === "string" ? msg.content : msg.content.response
+                const innerHeart = typeof msg.content === "string" ? null : msg.content.inner_heart
+
+                return (
                   <div
+                    key={msg.id}
                     className={cn(
-                      "flex max-w-[88%] gap-3 md:max-w-[70%]",
-                      isUser ? "flex-row-reverse" : "flex-row"
+                      "fade-in flex w-full",
+                      isUser ? "justify-end" : "justify-start"
                     )}
                   >
-                    {!isUser && (
-                      <Avatar
-                        src={characterImage}
-                        alt={character.name}
-                        fallback={character.name[0]}
-                        className="size-10 shrink-0 border border-black/10 object-cover object-top"
-                      />
-                    )}
-
                     <div
                       className={cn(
-                        "rounded-2xl p-4 text-sm leading-relaxed shadow-[0_14px_26px_-20px_rgba(34,35,43,0.35)]",
-                        isUser
-                          ? "rounded-br-sm bg-[#3d3f48] text-[#f8f7f4]"
-                          : "rounded-bl-sm border border-black/10 bg-white/82 text-[#2a2d35] backdrop-blur-md"
+                        "flex max-w-[92%] gap-3 md:max-w-[70%]",
+                        isUser ? "flex-row-reverse" : "flex-row"
                       )}
                     >
-                      {!isUser && innerHeart && (
-                        <div className="mb-3 rounded-xl border border-[#dbccd9] bg-[#f7edf5] p-3 text-xs font-semibold text-[#7a5671]">
-                          💭 {innerHeart}
-                        </div>
+                      {!isUser && (
+                        <Avatar
+                          src={characterImage}
+                          alt={character.name}
+                          fallback={character.name[0]}
+                          className="size-10 shrink-0 border border-black/10 object-cover object-top"
+                        />
                       )}
-                      <div className="whitespace-pre-wrap">{content}</div>
+
+                      <div
+                        className={cn(
+                          "rounded-2xl p-4 text-sm leading-relaxed shadow-[0_16px_28px_-22px_rgba(34,35,43,0.45)]",
+                          isUser
+                            ? "rounded-br-sm bg-gradient-to-br from-[#3b3d45] to-[#2f3138] text-[#f8f7f4]"
+                            : "rounded-bl-sm border border-white/50 bg-[#f8f4ee]/84 text-[#2a2d35] backdrop-blur-md"
+                        )}
+                      >
+                        {!isUser && innerHeart && (
+                          <div className="mb-3 rounded-xl border border-[#dfd1df] bg-[#f9f0f7]/90 p-3 text-xs font-semibold text-[#775a74]">
+                            💭 {innerHeart}
+                          </div>
+                        )}
+                        <div className="whitespace-pre-wrap">{content}</div>
+                      </div>
                     </div>
                   </div>
+                )
+              })}
+
+              {isLoading && (
+                <div className="fade-in flex justify-start">
+                  <div className="rounded-2xl rounded-bl-sm border border-white/45 bg-[#f8f4ee]/78 px-5 py-3 text-xs text-[#7b766d]">
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8] [animation-delay:-0.2s]" />
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8] [animation-delay:-0.1s]" />
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8]" />
+                    </span>
+                  </div>
                 </div>
-              )
-            })}
-            {isLoading && (
-              <div className="fade-in flex justify-start">
-                <div className="rounded-2xl rounded-bl-sm border border-black/10 bg-white/82 px-5 py-3 text-xs text-[#7b766d]">
-                  <span className="inline-flex items-center gap-1">
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8] [animation-delay:-0.2s]" />
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8] [animation-delay:-0.1s]" />
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8]" />
-                  </span>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
-          <div className="bg-gradient-to-t from-[#ece9e1] via-[#ece9e1]/95 to-transparent p-4 pb-8 lg:p-6">
-            <div className="mx-auto max-w-4xl rounded-2xl border border-black/10 bg-white/85 p-2 shadow-[0_16px_30px_-20px_rgba(42,45,53,0.45)] backdrop-blur-xl">
-              <div className="flex items-center gap-2 pl-3">
+          <div className="bg-gradient-to-t from-[#e7dfd3] via-[#e7dfd3]/95 to-transparent px-3 pb-[calc(0.85rem+env(safe-area-inset-bottom))] pt-3 sm:p-4 lg:p-6">
+            <div className="mx-auto w-full max-w-4xl rounded-2xl border border-white/45 bg-[#f7f2ea]/82 shadow-[0_20px_34px_-22px_rgba(42,45,53,0.52)] backdrop-blur-xl">
+              <div className="px-4 pt-3 text-xs text-[#9b9488]">메시지 보내기</div>
+              <div className="flex items-center gap-2 px-3 pb-3">
                 <Input
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
                   placeholder="메시지를 입력하세요"
                   disabled={isLoading}
-                  className="h-10 flex-1 border-0 bg-transparent text-[#2a2c34] placeholder:text-[#8d887f] focus-visible:ring-0"
+                  className="h-10 flex-1 border-0 bg-transparent text-[#2a2c34] placeholder:text-[#847c73] focus-visible:ring-0"
                 />
                 <Button
                   onClick={handleSendMessage}
                   disabled={isLoading || !inputValue.trim()}
-                  className="size-10 shrink-0 rounded-xl bg-[#3b3e47] text-white hover:bg-[#2f3138]"
+                  className="size-10 shrink-0 rounded-xl bg-gradient-to-br from-[#3c3f48] to-[#2e3037] text-white shadow-[0_12px_22px_-14px_rgba(24,25,31,0.9)] hover:brightness-110"
                 >
                   <Send className="size-4" />
                 </Button>

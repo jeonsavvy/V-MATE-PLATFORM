@@ -28,7 +28,7 @@ graph TD
   - 비로그인: LocalStorage
   - 로그인: Supabase `chat_messages` 테이블
 - **서버리스 프록시**: Gemini API Key는 Netlify Function에서만 사용
-- **모델 고정**: `gemini-3-flash-preview` 단일 모델 사용
+- **모델 고정**: 기본 `gemini-flash-latest` 단일 모델 사용 (환경 변수로 오버라이드 가능)
 - **동일 모델 재시도**: 일시 오류(타임아웃/429/5xx) 시 1회 재시도
 - **Gemini Context Cache 재사용**: 캐릭터별 시스템 프롬프트 캐시를 `cachedContent`로 재사용해 재요청 비용 절감
 - **JSON Mode 요청**: `responseMimeType: "application/json"`
@@ -69,6 +69,7 @@ FUNCTION_TOTAL_TIMEOUT_MS=17000
 FUNCTION_TIMEOUT_GUARD_MS=1500
 GEMINI_RETRY_BACKOFF_MS=250
 GEMINI_MODEL_ATTEMPTS=2
+GEMINI_MODEL_NAME=gemini-flash-latest
 GEMINI_CONTEXT_CACHE_ENABLED=true
 GEMINI_CONTEXT_CACHE_TTL_SECONDS=21600
 GEMINI_CONTEXT_CACHE_CREATE_TIMEOUT_MS=900
@@ -97,7 +98,7 @@ npm run dev:net
 ## 설정 메모
 
 - 기본 히스토리 윈도우: `GEMINI_HISTORY_MESSAGES` (기본 6)
-- 모델: `gemini-3-flash-preview` 고정 (모델 fallback 없음)
+- 모델: 기본 `gemini-flash-latest` (필요 시 `GEMINI_MODEL_NAME`으로 오버라이드, 모델 fallback 없음)
 - 동일 모델 재시도: 최대 1회
 - 모델 시도 횟수: `GEMINI_MODEL_ATTEMPTS` (기본 2)
 - 시스템 프롬프트 최대 길이: `GEMINI_MAX_SYSTEM_PROMPT_CHARS` (기본 3500)

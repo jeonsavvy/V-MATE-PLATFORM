@@ -407,7 +407,7 @@ export const handler = async (event, context) => {
         const normalizedCharacterId = String(characterId || '').trim().toLowerCase();
         const requestCachedContent = parseCachedContentName(cachedContent);
         const trimmedSystemPrompt = String(systemPrompt || '').trim();
-        const MODEL_NAME = 'gemini-3-flash-preview';
+        const MODEL_NAME = String(process.env.GEMINI_MODEL_NAME || 'gemini-flash-latest').trim() || 'gemini-flash-latest';
         const MAX_MODEL_ATTEMPTS = Math.max(1, Number(process.env.GEMINI_MODEL_ATTEMPTS || 2));
 
         const canUseContextCache =

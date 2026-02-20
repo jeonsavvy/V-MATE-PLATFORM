@@ -5,25 +5,25 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
+    --background: 38 30% 89%;
+    --foreground: 223 10% 17%;
+    --card: 36 36% 95%;
+    --card-foreground: 223 10% 17%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
+    --popover-foreground: 223 10% 17%;
+    --primary: 221 10% 20%;
     --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
+    --secondary: 30 33% 92%;
+    --secondary-foreground: 223 10% 17%;
+    --muted: 30 33% 92%;
+    --muted-foreground: 34 10% 44%;
+    --accent: 30 33% 92%;
     --accent-foreground: 0 0% 9%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
+    --border: 34 26% 78%;
+    --input: 34 26% 78%;
+    --ring: 8 70% 59%;
     --radius: 0.5rem;
   }
 
@@ -57,7 +57,13 @@
   body {
     @apply bg-background text-foreground font-sans;
     font-family: 'Pretendard', sans-serif;
+    background-color: #e7dfd3;
+    color: #22242b;
   }
+}
+
+::selection {
+  background: rgba(242, 98, 83, 0.32);
 }
 
 .fade-in {
@@ -81,18 +87,16 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #050505;
+  background: #d9d1c6;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #333;
+  background: #8c8379;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #444;
+  background: #706860;
 }
-
-
 
 
