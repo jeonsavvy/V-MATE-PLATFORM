@@ -10,6 +10,8 @@
 [build.environment]
   # Node.js 버전 (Netlify Functions 사용 시 필요, Ubuntu 20.04+ 호환)
   NODE_VERSION = "20"
+  # Supabase 공개 클라이언트 키/URL은 번들 포함이 정상이라 secrets scan 예외 처리
+  SECRETS_SCAN_OMIT_KEYS = "VITE_SUPABASE_URL,VITE_SUPABASE_ANON_KEY"
 
 # Functions 설정
 [functions]

@@ -12,6 +12,36 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            return undefined
+          }
+
+          if (id.includes('react') || id.includes('scheduler')) {
+            return 'react-vendor'
+          }
+
+          if (id.includes('@supabase')) {
+            return 'supabase-vendor'
+          }
+
+          if (
+            id.includes('@radix-ui') ||
+            id.includes('lucide-react') ||
+            id.includes('sonner') ||
+            id.includes('react-hook-form') ||
+            id.includes('clsx') ||
+            id.includes('tailwind-merge')
+          ) {
+            return 'ui-vendor'
+          }
+
+          return 'vendor'
+        },
+      },
+    },
   },
   publicDir: 'assets',
 })
