@@ -507,7 +507,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
       }))
 
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 12000)
+      const timeoutId = setTimeout(() => controller.abort(), 17000)
 
       let response
       const cacheStorageKey = getPromptCacheKey(character.id)
