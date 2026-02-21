@@ -59,6 +59,14 @@ const parseSavedContentToPreview = (content: unknown): string => {
   }
 }
 
+const resolveChatApiUrl = (): string => {
+  const baseUrl = String(import.meta.env.VITE_CHAT_API_BASE_URL || "").trim().replace(/\/+$/, "")
+  if (!baseUrl) {
+    return "/api/chat"
+  }
+  return baseUrl.endsWith("/api/chat") ? baseUrl : `${baseUrl}/api/chat`
+}
+
 export function ChatView({ character, onCharacterChange, user, onBack }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -77,6 +85,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
   const scrollRef = useRef<HTMLDivElement>(null)
   const isLoadingHistoryRef = useRef(false)
   const messagesRef = useRef(messages)
+  const chatApiUrlRef = useRef(resolveChatApiUrl())
   const getPromptCacheKey = (charId: string) => `gemini_cached_content_${charId}`
 
   useEffect(() => {
@@ -474,7 +483,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
       const cacheStorageKey = getPromptCacheKey(character.id)
       const cachedContent = localStorage.getItem(cacheStorageKey)
       try {
-        response = await fetch("/api/chat", {
+        response = await fetch(chatApiUrlRef.current, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -508,6 +517,11 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
           errorCode = errorData.error_code || ""
           if (errorMessage.includes("API key") || errorMessage.includes("GOOGLE_API_KEY")) {
             errorMessage = "API 키가 설정되지 않았거나 만료되었습니다. 관리자에게 문의해주세요."
+          } else if (
+            errorCode === "UPSTREAM_LOCATION_UNSUPPORTED" ||
+            errorMessage.includes("location is not supported")
+          ) {
+            errorMessage = "현재 서버 지역에서는 Gemini API를 사용할 수 없습니다. 관리자에게 문의해주세요."
           } else if (
             errorCode === "UPSTREAM_CONNECTION_FAILED" ||
             errorCode === "UPSTREAM_TIMEOUT" ||
@@ -615,6 +629,22 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
               : character.id === "alice"
                 ? "응답이 지연되고 있다. 잠시 후 다시 시도해달라."
                 : "응답이 좀 느린 것 같은데... 다시 말해봐.",
+        }
+      } else if (errorMsg.includes("서버 지역") || errorMsg.includes("location is not supported")) {
+        parsed = {
+          emotion: "normal",
+          inner_heart:
+            character.id === "mika"
+              ? "내가 있는 서버 위치에서 지금 연결이 막혀 있어..."
+              : character.id === "alice"
+                ? "현재 서버 지역 정책으로 호출이 차단되는군."
+                : "지금 서버 위치 이슈로 막힘.",
+          response:
+            character.id === "mika"
+              ? "선생님, 지금 서버 지역에서는 AI 호출이 안 되는 상태래. 관리자에게 서버 지역 변경이나 모델 변경을 부탁해줘."
+              : character.id === "alice"
+                ? "현재 서버 지역에서는 Gemini API 호출이 제한된다. 관리자에게 배포 지역 변경 또는 모델 전환을 요청해달라."
+                : "지금 서버 지역에서 Gemini가 막혀있대. 관리자한테 배포 지역/모델 바꿔달라고 해줘.",
         }
       } else {
         parsed = {

@@ -56,6 +56,7 @@ npm install
 # Client
 VITE_SUPABASE_URL=...
 VITE_SUPABASE_ANON_KEY=...
+VITE_CHAT_API_BASE_URL=
 
 # Cloudflare Worker Secret/Vars
 GOOGLE_API_KEY=...
@@ -116,6 +117,15 @@ npm run cf:dev
 - 클라이언트에서 service role key 감지 시 Supabase를 비활성화하고 placeholder client로 대체
 - API 실패/파싱 실패 시 캐릭터별 fallback 대사 출력(클라이언트 레벨 유지)
 
+### Cloud Run 백엔드 사용 시 (권장)
+
+- `VITE_CHAT_API_BASE_URL`에 Cloud Run 서비스 URL을 넣으면 프론트가 Worker 대신 Cloud Run `/api/chat`로 직접 호출합니다.
+  - 예: `VITE_CHAT_API_BASE_URL=https://v-mate-chat-xxxxx-uc.a.run.app`
+- Cloud Run의 `ALLOWED_ORIGINS`에는 최소 아래를 포함하세요:
+  - `https://v-mate.jeonsavvy.workers.dev`
+  - `http://localhost:5173`
+  - `http://127.0.0.1:5173`
+
 ---
 
 ## 캐릭터 프롬프트 수정 가이드
@@ -150,6 +160,32 @@ npm run cf:deploy
 
 ```bash
 npx --yes wrangler@4.67.0 secret put GOOGLE_API_KEY
+```
+
+## Cloud Run 배포 (Gemini 지역 제한 회피용)
+
+1) Google Secret Manager에 Gemini 키 저장
+
+```bash
+gcloud secrets create GEMINI_API_KEY --replication-policy="automatic"
+printf '%s' 'YOUR_GEMINI_API_KEY' | gcloud secrets versions add GEMINI_API_KEY --data-file=-
+```
+
+2) Cloud Run 배포
+
+```bash
+gcloud run deploy v-mate-chat \
+  --source . \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --set-secrets GOOGLE_API_KEY=GEMINI_API_KEY:latest \
+  --set-env-vars ALLOWED_ORIGINS=https://v-mate.jeonsavvy.workers.dev,http://localhost:5173,http://127.0.0.1:5173,ALLOW_ALL_ORIGINS=false,GEMINI_MODEL_NAME=gemini-3-flash-preview
+```
+
+3) 프론트 `.env`에 Cloud Run URL 연결 후 재배포
+
+```env
+VITE_CHAT_API_BASE_URL=https://<your-cloud-run-url>
 ```
 
 ## 디렉터리

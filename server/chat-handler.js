@@ -355,7 +355,7 @@ export const handler = async (event, context) => {
                 statusCode: 500,
                 headers,
                 body: JSON.stringify({
-                    error: 'API key not configured. Please set GOOGLE_API_KEY in Cloudflare Worker secrets.',
+                    error: 'API key not configured. Please set GOOGLE_API_KEY in runtime secrets.',
                 }),
             };
         }
@@ -607,12 +607,19 @@ export const handler = async (event, context) => {
 
         if (!geminiResponse.ok || geminiData.error) {
             let errorMessage = 'Failed to get response from Gemini API';
+            let errorCode = 'UPSTREAM_MODEL_ERROR';
 
             if (geminiData.error) {
                 if (geminiData.error.message?.includes('API_KEY') || geminiData.error.message?.includes('API key')) {
                     errorMessage = 'Invalid or expired API key. Please check your GOOGLE_API_KEY in Cloudflare Worker secrets.';
                 } else if (geminiData.error.message?.includes('quota') || geminiData.error.message?.includes('Quota')) {
                     errorMessage = 'API quota exceeded. Please check your Google Cloud billing.';
+                } else if (
+                    geminiData.error.message?.includes('location is not supported') ||
+                    geminiData.error.message?.includes('User location is not supported')
+                ) {
+                    errorMessage = 'Gemini API is not available in this server region. Deploy backend in a supported region or switch provider.';
+                    errorCode = 'UPSTREAM_LOCATION_UNSUPPORTED';
                 } else {
                     errorMessage = geminiData.error.message || errorMessage;
                 }
@@ -623,7 +630,7 @@ export const handler = async (event, context) => {
                 headers,
                 body: JSON.stringify({
                     error: errorMessage,
-                    error_code: 'UPSTREAM_MODEL_ERROR',
+                    error_code: errorCode,
                 }),
             };
         }

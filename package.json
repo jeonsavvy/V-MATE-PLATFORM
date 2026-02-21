@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "start": "node server/cloud-run-server.js",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "cf:dev": "npm run build && npx --yes wrangler@4.67.0 dev",
