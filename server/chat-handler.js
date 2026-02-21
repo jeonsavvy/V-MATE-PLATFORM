@@ -263,6 +263,74 @@ const withElapsedHeader = (headers, startedAtMs) => ({
     'X-V-MATE-Elapsed-Ms': String(Math.max(0, Date.now() - startedAtMs)),
 });
 
+const ALLOWED_EMOTIONS = new Set(['normal', 'happy', 'confused', 'angry']);
+
+const tryParseJsonObject = (text) => {
+    if (!text || typeof text !== 'string') {
+        return null;
+    }
+
+    try {
+        const parsed = JSON.parse(text);
+        return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+        return null;
+    }
+};
+
+const extractJsonObjectCandidates = (text) => {
+    const candidates = [];
+    if (!text || typeof text !== 'string') {
+        return candidates;
+    }
+
+    let depth = 0;
+    let start = -1;
+    let inString = false;
+    let escaping = false;
+
+    for (let i = 0; i < text.length; i += 1) {
+        const ch = text[i];
+
+        if (escaping) {
+            escaping = false;
+            continue;
+        }
+
+        if (ch === '\\') {
+            escaping = true;
+            continue;
+        }
+
+        if (ch === '"') {
+            inString = !inString;
+            continue;
+        }
+
+        if (inString) {
+            continue;
+        }
+
+        if (ch === '{') {
+            if (depth === 0) {
+                start = i;
+            }
+            depth += 1;
+            continue;
+        }
+
+        if (ch === '}') {
+            depth -= 1;
+            if (depth === 0 && start >= 0) {
+                candidates.push(text.slice(start, i + 1));
+                start = -1;
+            }
+        }
+    }
+
+    return candidates;
+};
+
 const normalizeAssistantPayload = (rawText) => {
     const safeFallback = {
         emotion: 'normal',
@@ -275,13 +343,32 @@ const normalizeAssistantPayload = (rawText) => {
         return safeFallback;
     }
 
-    const jsonStr = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+    const normalizedText = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
 
-    let parsed;
-    try {
-        parsed = JSON.parse(jsonStr);
-    } catch {
-        return safeFallback;
+    let parsed = tryParseJsonObject(normalizedText);
+    if (!parsed) {
+        const candidates = extractJsonObjectCandidates(normalizedText);
+        for (const candidate of candidates) {
+            const maybeParsed = tryParseJsonObject(candidate);
+            if (maybeParsed) {
+                parsed = maybeParsed;
+                break;
+            }
+        }
+    }
+
+    if (!parsed) {
+        const plainResponse = normalizedText.replace(/\s+/g, ' ').trim();
+        if (!plainResponse) {
+            return safeFallback;
+        }
+
+        return {
+            emotion: 'normal',
+            inner_heart: '',
+            response: plainResponse.slice(0, 520),
+            narration: '',
+        };
     }
 
     const emotion = typeof parsed?.emotion === 'string' && parsed.emotion.trim()
@@ -301,7 +388,7 @@ const normalizeAssistantPayload = (rawText) => {
         : '';
 
     return {
-        emotion,
+        emotion: ALLOWED_EMOTIONS.has(emotion) ? emotion : 'normal',
         inner_heart: innerHeart,
         response,
         narration,
