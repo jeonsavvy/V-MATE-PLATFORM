@@ -1,7 +1,7 @@
 /**
- * V-MATE Platform - Frontend Logic
+ * V-MATE - Frontend Logic
  * 
- * 이 파일은 V-MATE 플랫폼의 클라이언트 사이드 로직을 담당합니다.
+ * 이 파일은 V-MATE의 클라이언트 사이드 로직을 담당합니다.
  * API 키는 서버 사이드(Netlify Function)에서 관리되므로 클라이언트에는 노출되지 않습니다.
  * 보안을 위해 모든 API 호출은 Netlify Functions를 통해 프록시됩니다.
  */

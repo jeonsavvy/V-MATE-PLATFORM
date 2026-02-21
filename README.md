@@ -1,4 +1,4 @@
-# V-MATE Platform
+# V-MATE
 
 캐릭터의 **겉말(response)** 과 **속마음(inner_heart)** 을 분리해 보여주는 웹 기반 AI 캐릭터 채팅 프로젝트입니다.
 
