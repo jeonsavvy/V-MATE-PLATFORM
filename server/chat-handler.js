@@ -493,99 +493,222 @@ export const handler = async (event, context) => {
             }
         }
 
+        const isCacheLookupErrorMessage = (message) => {
+            const normalized = String(message || '').toLowerCase();
+            return (
+                normalized.includes('cachedcontent') ||
+                normalized.includes('cached content') ||
+                normalized.includes('not found') ||
+                normalized.includes('expired')
+            );
+        };
+
+        const buildRequestPayload = ({ requestContents, outputTokens, useCachedContent = true }) => {
+            const payload = {
+                contents: requestContents,
+                generationConfig: {
+                    responseMimeType: 'application/json',
+                    maxOutputTokens: outputTokens,
+                },
+            };
+
+            if (useCachedContent && cachedContentName) {
+                payload.cachedContent = cachedContentName;
+            }
+
+            return payload;
+        };
+
+        const callGeminiWithTimeout = async ({ modelName, payload, timeoutMs }) => {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+            try {
+                const response = await fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                        signal: controller.signal,
+                    }
+                );
+
+                let data;
+                try {
+                    data = await response.json();
+                } catch {
+                    return {
+                        ok: false,
+                        response,
+                        data: null,
+                        error: {
+                            status: 502,
+                            message: 'Invalid response from Gemini API.',
+                            code: 'UPSTREAM_INVALID_RESPONSE',
+                        },
+                    };
+                }
+
+                if (!response.ok || data?.error) {
+                    return {
+                        ok: false,
+                        response,
+                        data,
+                        error: {
+                            status: response.status || 500,
+                            message: data?.error?.message || 'Model call failed',
+                            code: 'UPSTREAM_MODEL_ERROR',
+                        },
+                    };
+                }
+
+                return {
+                    ok: true,
+                    response,
+                    data,
+                    error: null,
+                };
+            } catch (fetchError) {
+                if (fetchError?.name === 'AbortError') {
+                    return {
+                        ok: false,
+                        response: null,
+                        data: null,
+                        error: {
+                            status: 504,
+                            message: `Request timeout on model ${modelName} (${timeoutMs}ms).`,
+                            code: 'UPSTREAM_TIMEOUT',
+                        },
+                    };
+                }
+
+                return {
+                    ok: false,
+                    response: null,
+                    data: null,
+                    error: {
+                        status: 503,
+                        message: 'Failed to connect to Gemini API. Please try again later.',
+                        code: 'UPSTREAM_CONNECTION_FAILED',
+                    },
+                };
+            } finally {
+                clearTimeout(timeoutId);
+            }
+        };
+
         let geminiResponse;
         let geminiData;
         let lastModelError = null;
 
-        const remainingBudget = getRemainingBudget();
-        const attemptTimeoutMs = Math.min(
+        const primaryTimeoutMs = Math.min(
             MODEL_TIMEOUT_MS,
-            Math.max(0, remainingBudget - FUNCTION_TIMEOUT_GUARD_MS)
+            Math.max(0, getRemainingBudget() - FUNCTION_TIMEOUT_GUARD_MS)
         );
 
-        if (attemptTimeoutMs <= 0) {
+        if (primaryTimeoutMs <= 0) {
             lastModelError = {
                 status: 504,
                 message: 'Function timeout budget exceeded before model response.',
                 code: 'FUNCTION_BUDGET_TIMEOUT',
             };
         } else {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), attemptTimeoutMs);
+            let primaryResult = await callGeminiWithTimeout({
+                modelName: MODEL_NAME,
+                payload: buildRequestPayload({
+                    requestContents: cachedContentName ? contents : contentsWithSystemPrompt,
+                    outputTokens: 320,
+                }),
+                timeoutMs: primaryTimeoutMs,
+            });
 
-            try {
-                const requestPayload = {
-                    contents: cachedContentName ? contents : contentsWithSystemPrompt,
-                    generationConfig: {
-                        responseMimeType: 'application/json',
-                        maxOutputTokens: 320,
-                    },
-                };
+            if (
+                !primaryResult.ok &&
+                primaryResult.error?.code === 'UPSTREAM_MODEL_ERROR' &&
+                cachedContentName &&
+                isCacheLookupErrorMessage(primaryResult.error?.message)
+            ) {
+                removePromptCache(promptCacheKey);
+                cachedContentName = null;
 
-                if (cachedContentName) {
-                    requestPayload.cachedContent = cachedContentName;
-                }
-
-                geminiResponse = await fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(requestPayload),
-                        signal: controller.signal,
-                    }
+                const cacheResetRetryTimeoutMs = Math.min(
+                    MODEL_TIMEOUT_MS,
+                    Math.max(0, getRemainingBudget() - FUNCTION_TIMEOUT_GUARD_MS)
                 );
 
-                clearTimeout(timeoutId);
-
-                try {
-                    geminiData = await geminiResponse.json();
-                } catch {
-                    lastModelError = {
-                        status: 502,
-                        message: 'Invalid response from Gemini API.',
-                        code: 'UPSTREAM_INVALID_RESPONSE',
-                    };
+                if (cacheResetRetryTimeoutMs > 0) {
+                    primaryResult = await callGeminiWithTimeout({
+                        modelName: MODEL_NAME,
+                        payload: buildRequestPayload({
+                            requestContents: contentsWithSystemPrompt,
+                            outputTokens: 320,
+                            useCachedContent: false,
+                        }),
+                        timeoutMs: cacheResetRetryTimeoutMs,
+                    });
                 }
+            }
 
-                if (geminiResponse?.ok && geminiData && !geminiData.error) {
-                    lastModelError = null;
-                } else if (!lastModelError) {
-                    const modelErrorMessage = geminiData?.error?.message || 'Model call failed';
-                    const normalizedErrorMessage = String(modelErrorMessage).toLowerCase();
-                    const isCacheLookupError =
-                        cachedContentName &&
-                        (normalizedErrorMessage.includes('cachedcontent') ||
-                            normalizedErrorMessage.includes('cached content') ||
-                            normalizedErrorMessage.includes('not found') ||
-                            normalizedErrorMessage.includes('expired'));
+            if (primaryResult.ok) {
+                geminiResponse = primaryResult.response;
+                geminiData = primaryResult.data;
+                lastModelError = null;
+            } else {
+                lastModelError = primaryResult.error;
 
-                    lastModelError = {
-                        status: geminiResponse?.status || 500,
-                        message: modelErrorMessage,
-                        code: 'UPSTREAM_MODEL_ERROR',
-                    };
+                const shouldRunRecoveryAttempt =
+                    lastModelError?.code === 'UPSTREAM_TIMEOUT' ||
+                    lastModelError?.code === 'UPSTREAM_CONNECTION_FAILED';
 
-                    if (isCacheLookupError) {
-                        removePromptCache(promptCacheKey);
-                        cachedContentName = null;
+                if (shouldRunRecoveryAttempt) {
+                    const recoveryTimeoutMs = Math.min(
+                        7000,
+                        Math.max(0, getRemainingBudget() - FUNCTION_TIMEOUT_GUARD_MS)
+                    );
+
+                    if (recoveryTimeoutMs > 0) {
+                        const minimalSystemPrompt = clampSystemPrompt(trimmedSystemPrompt).slice(
+                            0,
+                            Math.min(MAX_SYSTEM_PROMPT_CHARS, 900)
+                        );
+                        const minimalContents = [
+                            {
+                                role: 'user',
+                                parts: [{ text: clampText(userMessage) }],
+                            },
+                        ];
+
+                        const minimalContentsWithSystemPrompt = [];
+                        if (minimalSystemPrompt) {
+                            minimalContentsWithSystemPrompt.push({
+                                role: 'user',
+                                parts: [{ text: minimalSystemPrompt }],
+                            });
+                            minimalContentsWithSystemPrompt.push({
+                                role: 'model',
+                                parts: [{ text: 'Understood. I will respond in the specified JSON format.' }],
+                            });
+                        }
+                        minimalContentsWithSystemPrompt.push(...minimalContents);
+
+                        const recoveryResult = await callGeminiWithTimeout({
+                            modelName: MODEL_NAME,
+                            payload: buildRequestPayload({
+                                requestContents: cachedContentName ? minimalContents : minimalContentsWithSystemPrompt,
+                                outputTokens: 220,
+                            }),
+                            timeoutMs: recoveryTimeoutMs,
+                        });
+
+                        if (recoveryResult.ok) {
+                            geminiResponse = recoveryResult.response;
+                            geminiData = recoveryResult.data;
+                            lastModelError = null;
+                        } else {
+                            lastModelError = recoveryResult.error;
+                        }
                     }
-                }
-            } catch (fetchError) {
-                clearTimeout(timeoutId);
-
-                if (fetchError?.name === 'AbortError') {
-                    lastModelError = {
-                        status: 504,
-                        message: `Request timeout on model ${MODEL_NAME} (${attemptTimeoutMs}ms).`,
-                        code: 'UPSTREAM_TIMEOUT',
-                    };
-                } else {
-                    lastModelError = {
-                        status: 503,
-                        message: 'Failed to connect to Gemini API. Please try again later.',
-                        code: 'UPSTREAM_CONNECTION_FAILED',
-                    };
                 }
             }
         }
@@ -606,6 +729,7 @@ export const handler = async (event, context) => {
                         text: JSON.stringify(fallbackPayload),
                         cachedContent: cachedContentName || null,
                         error_code: upstreamErrorCode,
+                        elapsed_ms: Math.max(0, Date.now() - requestStartedAt),
                     }),
                 };
             }
