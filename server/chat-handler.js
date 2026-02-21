@@ -522,14 +522,22 @@ export const handler = async (event, context) => {
             );
         };
 
-        const buildRequestPayload = ({ requestContents, outputTokens, useCachedContent = true }) => {
+        const buildRequestPayload = ({
+            requestContents,
+            outputTokens,
+            useCachedContent = true,
+            useJsonMimeType = true,
+        }) => {
             const payload = {
                 contents: requestContents,
                 generationConfig: {
-                    responseMimeType: 'application/json',
                     maxOutputTokens: outputTokens,
                 },
             };
+
+            if (useJsonMimeType) {
+                payload.generationConfig.responseMimeType = 'application/json';
+            }
 
             if (useCachedContent && cachedContentName) {
                 payload.cachedContent = cachedContentName;
@@ -793,13 +801,72 @@ export const handler = async (event, context) => {
             };
         }
 
-        const modelText = extractGeminiResponseText(geminiData);
+        let modelText = extractGeminiResponseText(geminiData);
         if (!modelText) {
             console.warn('[V-MATE] Empty Gemini response text', {
                 finishReason: geminiData?.candidates?.[0]?.finishReason || null,
                 promptBlockReason: geminiData?.promptFeedback?.blockReason || null,
             });
 
+            if (cachedContentName) {
+                removePromptCache(promptCacheKey);
+                cachedContentName = null;
+            }
+
+            const emptyRecoveryTimeoutMs = Math.min(
+                5000,
+                Math.max(0, getRemainingBudget() - FUNCTION_TIMEOUT_GUARD_MS)
+            );
+
+            if (emptyRecoveryTimeoutMs > 0) {
+                const minimalSystemPrompt = clampSystemPrompt(trimmedSystemPrompt).slice(
+                    0,
+                    Math.min(MAX_SYSTEM_PROMPT_CHARS, 700)
+                );
+                const emptyRecoveryContentsWithSystemPrompt = [];
+                if (minimalSystemPrompt) {
+                    emptyRecoveryContentsWithSystemPrompt.push({
+                        role: 'user',
+                        parts: [{ text: minimalSystemPrompt }],
+                    });
+                    emptyRecoveryContentsWithSystemPrompt.push({
+                        role: 'model',
+                        parts: [{ text: 'Understood. I will respond in the specified JSON format.' }],
+                    });
+                }
+                emptyRecoveryContentsWithSystemPrompt.push({
+                    role: 'user',
+                    parts: [{ text: clampText(userMessage) }],
+                });
+
+                const emptyRecoveryResult = await callGeminiWithTimeout({
+                    modelName: MODEL_NAME,
+                    payload: buildRequestPayload({
+                        requestContents: emptyRecoveryContentsWithSystemPrompt,
+                        outputTokens: 180,
+                        useCachedContent: false,
+                        useJsonMimeType: false,
+                    }),
+                    timeoutMs: emptyRecoveryTimeoutMs,
+                });
+
+                if (emptyRecoveryResult.ok) {
+                    const recoveredText = extractGeminiResponseText(emptyRecoveryResult.data);
+                    if (recoveredText) {
+                        geminiResponse = emptyRecoveryResult.response;
+                        geminiData = emptyRecoveryResult.data;
+                        modelText = recoveredText;
+                    } else {
+                        console.warn('[V-MATE] Empty recovery response text after retry', {
+                            finishReason: emptyRecoveryResult.data?.candidates?.[0]?.finishReason || null,
+                            promptBlockReason: emptyRecoveryResult.data?.promptFeedback?.blockReason || null,
+                        });
+                    }
+                }
+            }
+        }
+
+        if (!modelText) {
             const fallbackPayload = buildUpstreamFallbackPayload(normalizedCharacterId);
             return {
                 statusCode: 200,
