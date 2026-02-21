@@ -315,7 +315,7 @@ function removeLoading(id) {
  * 3. 대화 컨텍스트 유지: messageHistory를 통해 이전 대화 내용을 기억하여 자연스러운 대화 흐름 구현
  * 
  * 보안 아키텍처:
- * - 클라이언트에서 직접 OpenAI API를 호출하지 않음
+ * - 클라이언트에서 직접 Gemini API를 호출하지 않음
  * - Cloudflare Worker을 프록시로 사용하여 API 키를 서버 사이드에서만 관리
  * - 모든 요청은 `/api/chat` 엔드포인트로 전송
  * 
@@ -387,7 +387,7 @@ async function sendMessage() {
                 errorMessage = errorData.error || errorMessage;
                 
                 // API 키 관련 오류 처리
-                if (errorMessage.includes('API key') || errorMessage.includes('OPENAI_API_KEY')) {
+                if (errorMessage.includes('API key') || errorMessage.includes('GOOGLE_API_KEY')) {
                     errorMessage = 'API 키가 설정되지 않았거나 만료되었습니다. 관리자에게 문의해주세요.';
                 }
             } catch (e) {
@@ -413,7 +413,7 @@ async function sendMessage() {
             throw new Error('서버로부터 응답을 받지 못했습니다. 다시 시도해주세요.');
         }
 
-        // 4. LLM 응답 파싱
+        // 4. Gemini 응답 파싱
         // Native JSON Mode 적용으로 응답이 이미 JSON 형식으로 반환됨
         // 응답 구조: { emotion: "happy/normal/angry", inner_heart: "속마음 텍스트", response: "실제 말 텍스트" }
         const rawText = data.text;

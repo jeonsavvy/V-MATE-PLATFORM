@@ -10,7 +10,7 @@
 graph TD
     U["User"] --> A["React + Vite Client"]
     A -->|"POST /api/chat"| B["Cloudflare Worker"]
-    B --> C["OpenAI GPT-5 API"]
+    B --> C["Google Gemini API"]
     C -->|"JSON response"| B
     B -->|"Normalized JSON string"| A
 
@@ -28,10 +28,11 @@ graph TD
 - **하이브리드 저장**:
   - 비로그인: LocalStorage
   - 로그인: Supabase `chat_messages` 테이블
-- **서버리스 프록시**: OpenAI API Key는 Cloudflare Worker에서만 사용
-- **모델 설정**: `OPENAI_MODEL_NAME` 환경 변수에서 변경 가능 (기본 `gpt-5`)
+- **서버리스 프록시**: Gemini API Key는 Cloudflare Worker에서만 사용
+- **모델 고정**: `gemini-2.5-flash-lite` 사용 (서버 코드 고정)
 - **동일 모델 재시도 없음**: 모델 요청은 단일 시도로만 처리
-- **Structured Outputs(JSON Schema)**: OpenAI `response_format.json_schema` 사용
+- **Gemini Context Cache 재사용**: 캐릭터별 시스템 프롬프트 캐시를 `cachedContent`로 재사용해 재요청 비용 절감
+- **JSON Mode 요청**: `responseMimeType: "application/json"`
 - **Origin allowlist CORS**: `ALLOWED_ORIGINS` 기반 허용
 - **요청 제한**: Origin/IP 키 기반 rate limit 적용
 - **응답 정규화**: 서버에서 `emotion / inner_heart / response`(+ `narration` optional) 스키마 보정 후 반환
@@ -59,16 +60,20 @@ VITE_SUPABASE_ANON_KEY=...
 VITE_CHAT_API_BASE_URL=
 
 # Cloudflare Worker Secret/Vars
-OPENAI_API_KEY=...
+GOOGLE_API_KEY=...
 
 # Optional
-MODEL_HISTORY_MESSAGES=10
-MODEL_MAX_PART_CHARS=700
-MODEL_MAX_SYSTEM_PROMPT_CHARS=5000
-MODEL_TIMEOUT_MS=15000
+GEMINI_HISTORY_MESSAGES=10
+GEMINI_MAX_PART_CHARS=700
+GEMINI_MAX_SYSTEM_PROMPT_CHARS=5000
+GEMINI_MODEL_TIMEOUT_MS=15000
 FUNCTION_TOTAL_TIMEOUT_MS=20000
 FUNCTION_TIMEOUT_GUARD_MS=1500
-OPENAI_MODEL_NAME=gpt-5
+GEMINI_CONTEXT_CACHE_ENABLED=true
+GEMINI_CONTEXT_CACHE_TTL_SECONDS=21600
+GEMINI_CONTEXT_CACHE_CREATE_TIMEOUT_MS=1800
+GEMINI_CONTEXT_CACHE_WARMUP_MIN_CHARS=1200
+GEMINI_CONTEXT_CACHE_AUTO_CREATE=true
 ALLOWED_ORIGINS=http://localhost:5173,https://your-domain.com
 ALLOW_ALL_ORIGINS=false
 RATE_LIMIT_WINDOW_MS=60000
@@ -95,15 +100,20 @@ npm run cf:dev
 
 ## 설정 메모
 
-- 기본 히스토리 윈도우: `MODEL_HISTORY_MESSAGES` (기본 10)
-- 모델: `OPENAI_MODEL_NAME`에서 변경 가능 (기본 `gpt-5`)
-- 모델 최대 출력 토큰: 320 (`server/chat-handler.js`의 `max_completion_tokens`)
+- 기본 히스토리 윈도우: `GEMINI_HISTORY_MESSAGES` (기본 10)
+- 모델: `gemini-2.5-flash-lite` 고정 (모델 fallback 없음)
+- 모델 최대 출력 토큰: 320 (`server/chat-handler.js`의 `generationConfig.maxOutputTokens`)
 - 동일 모델 재시도: 없음(0회, 단일 시도)
-- 시스템 프롬프트 최대 길이: `MODEL_MAX_SYSTEM_PROMPT_CHARS` (기본 5000)
-- 요청 파트 최대 길이: `MODEL_MAX_PART_CHARS` (기본 700)
-- 모델 요청 타임아웃: `MODEL_TIMEOUT_MS` (기본 15000ms)
+- 시스템 프롬프트 최대 길이: `GEMINI_MAX_SYSTEM_PROMPT_CHARS` (기본 5000)
+- 요청 파트 최대 길이: `GEMINI_MAX_PART_CHARS` (기본 700)
+- 모델 요청 타임아웃: `GEMINI_MODEL_TIMEOUT_MS` (기본 15000ms)
 - Worker 함수 총 실행 예산: `FUNCTION_TOTAL_TIMEOUT_MS` (기본 20000ms)
 - 함수 종료 가드: `FUNCTION_TIMEOUT_GUARD_MS` (기본 1500ms)
+- Gemini Context Cache: `GEMINI_CONTEXT_CACHE_ENABLED` (기본 true)
+- Context Cache TTL: `GEMINI_CONTEXT_CACHE_TTL_SECONDS` (기본 21600초)
+- Cache 생성 타임아웃: `GEMINI_CONTEXT_CACHE_CREATE_TIMEOUT_MS` (기본 1800ms)
+- Cache 워밍 기준 길이: `GEMINI_CONTEXT_CACHE_WARMUP_MIN_CHARS` (기본 1200자)
+- Cache 자동 생성: `GEMINI_CONTEXT_CACHE_AUTO_CREATE` (기본 true)
 - 기본 Rate Limit: 60초당 30회(`RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX_REQUESTS`)
 - CORS는 `ALLOWED_ORIGINS`에 등록된 Origin만 허용
 - 클라이언트에서 service role key 감지 시 Supabase를 비활성화하고 placeholder client로 대체
@@ -135,7 +145,7 @@ npm run cf:dev
 ## 주의사항 (현재 상태)
 
 - 운영 중 CORS 긴급 완화가 필요하면 `ALLOW_ALL_ORIGINS=true`로 일시 완화할 수 있습니다(기본값은 `false` 권장).
-- 대화 히스토리 기본값은 10이며, `MODEL_HISTORY_MESSAGES`로 조정할 수 있습니다.
+- 대화 히스토리 기본값은 10이며, `GEMINI_HISTORY_MESSAGES`로 조정할 수 있습니다.
 
 ---
 
@@ -148,19 +158,19 @@ npm run cf:deploy
 - 배포 설정: `wrangler.jsonc`
 - Worker 엔트리: `worker.js`
 - 채팅 API: `/api/chat`
-- `OPENAI_API_KEY`는 Cloudflare secret으로 등록:
+- `GOOGLE_API_KEY`는 Cloudflare secret으로 등록:
 
 ```bash
-npx --yes wrangler@4.67.0 secret put OPENAI_API_KEY
+npx --yes wrangler@4.67.0 secret put GOOGLE_API_KEY
 ```
 
-## Cloud Run 배포 (OpenAI API 백엔드)
+## Cloud Run 배포 (Gemini 지역 제한 회피용)
 
-1) Google Secret Manager에 OpenAI 키 저장
+1) Google Secret Manager에 Gemini 키 저장
 
 ```bash
-gcloud secrets create OPENAI_API_KEY --replication-policy="automatic"
-printf '%s' 'YOUR_OPENAI_API_KEY' | gcloud secrets versions add OPENAI_API_KEY --data-file=-
+gcloud secrets create GEMINI_API_KEY --replication-policy="automatic"
+printf '%s' 'YOUR_GEMINI_API_KEY' | gcloud secrets versions add GEMINI_API_KEY --data-file=-
 ```
 
 2) Cloud Run 배포
@@ -170,8 +180,8 @@ gcloud run deploy v-mate-chat \
   --source . \
   --region us-central1 \
   --allow-unauthenticated \
-  --set-secrets OPENAI_API_KEY=OPENAI_API_KEY:latest \
-  --set-env-vars ALLOWED_ORIGINS=https://v-mate.jeonsavvy.workers.dev,http://localhost:5173,http://127.0.0.1:5173,ALLOW_ALL_ORIGINS=false,OPENAI_MODEL_NAME=gpt-5
+  --set-secrets GOOGLE_API_KEY=GEMINI_API_KEY:latest \
+  --set-env-vars ALLOWED_ORIGINS=https://v-mate.jeonsavvy.workers.dev,http://localhost:5173,http://127.0.0.1:5173,ALLOW_ALL_ORIGINS=false
 ```
 
 3) 프론트 `.env`에 Cloud Run URL 연결 후 재배포

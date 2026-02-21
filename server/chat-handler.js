@@ -1,12 +1,68 @@
 /**
- * Cloudflare Worker Chat Handler: OpenAI API 중계 서버
+ * Cloudflare Worker Chat Handler: Gemini API 중계 서버
  * - API key 은닉
  * - Origin allowlist 기반 CORS
  * - Origin/IP 기반 rate limit
- * - OpenAI 응답 JSON 정규화
+ * - Gemini 응답 JSON 정규화
  */
+import { createHash } from 'node:crypto';
 
 const rateLimitStore = new Map();
+const promptCacheStore = new Map();
+const SUPPORTED_CHARACTER_IDS = new Set(['mika', 'alice', 'kael']);
+const FIXED_GEMINI_MODEL_NAME = 'gemini-2.5-flash-lite';
+
+const shouldUseGeminiContextCache = () =>
+    String(process.env.GEMINI_CONTEXT_CACHE_ENABLED || 'true').toLowerCase() !== 'false';
+
+const getGeminiContextCacheConfig = () => ({
+    ttlSeconds: Number(process.env.GEMINI_CONTEXT_CACHE_TTL_SECONDS || 21600),
+    createTimeoutMs: Number(process.env.GEMINI_CONTEXT_CACHE_CREATE_TIMEOUT_MS || 1800),
+    warmupMinChars: Number(process.env.GEMINI_CONTEXT_CACHE_WARMUP_MIN_CHARS || 1200),
+    autoCreateEnabled: String(process.env.GEMINI_CONTEXT_CACHE_AUTO_CREATE || 'false').toLowerCase() !== 'false',
+});
+
+const toStablePromptHash = (prompt) =>
+    createHash('sha256')
+        .update(String(prompt || ''))
+        .digest('hex')
+        .slice(0, 24);
+
+const buildPromptCacheKey = (characterId, promptHash) => `${characterId}:${promptHash}`;
+
+const getValidPromptCache = (cacheKey) => {
+    const entry = promptCacheStore.get(cacheKey);
+    if (!entry) {
+        return null;
+    }
+
+    // 만료 15초 전부터는 재사용하지 않고 재생성 유도
+    if (!entry.expireAtMs || Date.now() >= entry.expireAtMs - 15000) {
+        promptCacheStore.delete(cacheKey);
+        return null;
+    }
+
+    return entry;
+};
+
+const removePromptCache = (cacheKey) => {
+    if (!cacheKey) return;
+    promptCacheStore.delete(cacheKey);
+};
+
+const isValidCachedContentName = (value) => {
+    const text = String(value || '').trim();
+    if (!text.startsWith('cachedContents/')) {
+        return false;
+    }
+    return /^[A-Za-z0-9/_\-.]+$/.test(text);
+};
+
+const parseCachedContentName = (value) => {
+    const text = String(value || '').trim();
+    return isValidCachedContentName(text) ? text : null;
+};
+
 const buildUpstreamFallbackPayload = (characterId) => {
     if (characterId === 'mika') {
         return {
@@ -41,6 +97,66 @@ const buildUpstreamFallbackPayload = (characterId) => {
         response: '연결이 잠시 흔들렸어요. 같은 내용을 한 번만 다시 보내주세요.',
         narration: '',
     };
+};
+
+const createPromptCacheEntry = async ({
+    apiKey,
+    modelName,
+    characterId,
+    systemPrompt,
+    cacheKey,
+}) => {
+    const { ttlSeconds, createTimeoutMs } = getGeminiContextCacheConfig();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), createTimeoutMs);
+
+    try {
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/cachedContents?key=${apiKey}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: `models/${modelName}`,
+                    displayName: `vmate-${characterId}-${cacheKey.slice(-8)}`,
+                    ttl: `${Math.max(300, ttlSeconds)}s`,
+                    systemInstruction: {
+                        role: 'system',
+                        parts: [{ text: String(systemPrompt) }],
+                    },
+                }),
+                signal: controller.signal,
+            }
+        );
+
+        let data;
+        try {
+            data = await response.json();
+        } catch {
+            return null;
+        }
+
+        if (!response.ok || data?.error || !data?.name) {
+            return null;
+        }
+
+        const expireAtMs = data?.expireTime ? Date.parse(data.expireTime) : NaN;
+        const safeExpireAtMs = Number.isFinite(expireAtMs)
+            ? expireAtMs
+            : Date.now() + Math.max(300, ttlSeconds) * 1000;
+
+        const entry = {
+            name: data.name,
+            expireAtMs: safeExpireAtMs,
+        };
+
+        promptCacheStore.set(cacheKey, entry);
+        return entry;
+    } catch {
+        return null;
+    } finally {
+        clearTimeout(timeoutId);
+    }
 };
 
 const parseAllowedOrigins = () => {
@@ -138,7 +254,7 @@ const buildHeaders = (originAllowed, origin) => {
         'Access-Control-Allow-Headers': 'Content-Type',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
         'Vary': 'Origin',
-        'X-V-MATE-Function': 'chat-v5-openai',
+        'X-V-MATE-Function': 'chat-v4',
         'Content-Type': 'application/json',
     };
 };
@@ -149,22 +265,21 @@ const withElapsedHeader = (headers, startedAtMs) => ({
 });
 
 const ALLOWED_EMOTIONS = new Set(['normal', 'happy', 'confused', 'angry']);
-const OPENAI_RESPONSE_SCHEMA = {
-    type: 'object',
-    additionalProperties: false,
+const JSON_RESPONSE_SCHEMA = {
+    type: 'OBJECT',
     properties: {
         emotion: {
-            type: 'string',
+            type: 'STRING',
             enum: ['normal', 'happy', 'confused', 'angry'],
         },
         inner_heart: {
-            type: 'string',
+            type: 'STRING',
         },
         response: {
-            type: 'string',
+            type: 'STRING',
         },
         narration: {
-            type: 'string',
+            type: 'STRING',
         },
     },
     required: ['emotion', 'inner_heart', 'response'],
@@ -341,21 +456,13 @@ const normalizeAssistantPayload = (rawText) => {
     };
 };
 
-const extractOpenAIResponseText = (openaiData) => {
-    const primaryContent = openaiData?.choices?.[0]?.message?.content;
+const extractGeminiResponseText = (geminiData) => {
+    const candidates = Array.isArray(geminiData?.candidates) ? geminiData.candidates : [];
 
-    if (typeof primaryContent === 'string' && primaryContent.trim()) {
-        return primaryContent.trim();
-    }
-
-    if (Array.isArray(primaryContent)) {
-        const text = primaryContent
-            .map((item) => {
-                if (typeof item?.text === 'string') {
-                    return item.text;
-                }
-                return '';
-            })
+    for (const candidate of candidates) {
+        const parts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [];
+        const text = parts
+            .map((part) => (typeof part?.text === 'string' ? part.text : ''))
             .filter(Boolean)
             .join('\n')
             .trim();
@@ -367,27 +474,6 @@ const extractOpenAIResponseText = (openaiData) => {
 
     return null;
 };
-
-const isStructuredOutputUnsupportedError = (message) => {
-    const normalized = String(message || '').toLowerCase();
-    const hasStructuredOutputKeyword =
-        normalized.includes('response_format') || normalized.includes('json_schema');
-    return (
-        hasStructuredOutputKeyword ||
-        (normalized.includes('structured output') && normalized.includes('not supported'))
-    );
-};
-
-const isMaxCompletionTokensUnsupportedError = (message) => {
-    const normalized = String(message || '').toLowerCase();
-    return normalized.includes('max_completion_tokens') && normalized.includes('unsupported');
-};
-
-const isConnectionRecoverableError = (errorCode) => (
-    errorCode === 'UPSTREAM_TIMEOUT' ||
-    errorCode === 'UPSTREAM_CONNECTION_FAILED' ||
-    errorCode === 'FUNCTION_BUDGET_TIMEOUT'
-);
 
 export const handler = async (event, context) => {
     const requestStartedAt = Date.now();
@@ -445,14 +531,14 @@ export const handler = async (event, context) => {
     }
 
     try {
-        const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
+        const apiKey = process.env.GOOGLE_API_KEY;
 
         if (!apiKey) {
             return {
                 statusCode: 500,
                 headers: withElapsedHeader(headers, requestStartedAt),
                 body: JSON.stringify({
-                    error: 'API key not configured. Please set OPENAI_API_KEY in runtime secrets.',
+                    error: 'API key not configured. Please set GOOGLE_API_KEY in runtime secrets.',
                 }),
             };
         }
@@ -472,7 +558,7 @@ export const handler = async (event, context) => {
             };
         }
 
-        const { systemPrompt, userMessage, messageHistory, characterId } = requestData;
+        const { systemPrompt, userMessage, messageHistory, characterId, cachedContent } = requestData;
 
         if (!userMessage || typeof userMessage !== 'string' || userMessage.trim().length === 0) {
             return {
@@ -484,90 +570,137 @@ export const handler = async (event, context) => {
             };
         }
 
-        const MAX_HISTORY_MESSAGES = Number(process.env.MODEL_HISTORY_MESSAGES || process.env.GEMINI_HISTORY_MESSAGES || 10);
-        const MAX_PART_CHARS = Number(process.env.MODEL_MAX_PART_CHARS || process.env.GEMINI_MAX_PART_CHARS || 700);
-        const MAX_SYSTEM_PROMPT_CHARS = Number(process.env.MODEL_MAX_SYSTEM_PROMPT_CHARS || process.env.GEMINI_MAX_SYSTEM_PROMPT_CHARS || 5000);
-        const MODEL_TIMEOUT_MS = Number(process.env.MODEL_TIMEOUT_MS || process.env.GEMINI_MODEL_TIMEOUT_MS || 15000);
+        const MAX_HISTORY_MESSAGES = Number(process.env.GEMINI_HISTORY_MESSAGES || 10);
+        const MAX_PART_CHARS = Number(process.env.GEMINI_MAX_PART_CHARS || 700);
+        const MAX_SYSTEM_PROMPT_CHARS = Number(process.env.GEMINI_MAX_SYSTEM_PROMPT_CHARS || 5000);
+        const MODEL_TIMEOUT_MS = Number(process.env.GEMINI_MODEL_TIMEOUT_MS || 15000);
         const FUNCTION_TOTAL_TIMEOUT_MS = Number(process.env.FUNCTION_TOTAL_TIMEOUT_MS || 20000);
         const FUNCTION_TIMEOUT_GUARD_MS = Number(process.env.FUNCTION_TIMEOUT_GUARD_MS || 1500);
         const clampText = (value) => String(value ?? '').slice(0, MAX_PART_CHARS);
         const clampSystemPrompt = (value) => String(value ?? '').slice(0, MAX_SYSTEM_PROMPT_CHARS);
 
         const normalizedCharacterId = String(characterId || '').trim().toLowerCase();
-        const clampedSystemPrompt = String(systemPrompt || '').trim()
-            ? clampSystemPrompt(String(systemPrompt || '').trim())
-            : '';
-        const MODEL_NAME = String(process.env.OPENAI_MODEL_NAME || 'gpt-5').trim() || 'gpt-5';
+        const requestCachedContent = parseCachedContentName(cachedContent);
+        const trimmedSystemPrompt = String(systemPrompt || '').trim();
+        const clampedSystemPrompt = trimmedSystemPrompt ? clampSystemPrompt(trimmedSystemPrompt) : '';
+        const MODEL_NAME = FIXED_GEMINI_MODEL_NAME;
 
-        const openAIMessages = [];
+        const canUseContextCache =
+            shouldUseGeminiContextCache() &&
+            Boolean(trimmedSystemPrompt) &&
+            SUPPORTED_CHARACTER_IDS.has(normalizedCharacterId);
 
-        if (clampedSystemPrompt) {
-            openAIMessages.push({
-                role: 'system',
-                content: clampedSystemPrompt,
-            });
+        let promptCacheKey = null;
+        let cachedContentName = null;
+
+        if (canUseContextCache) {
+            const promptHash = toStablePromptHash(trimmedSystemPrompt);
+            promptCacheKey = buildPromptCacheKey(normalizedCharacterId, promptHash);
+            cachedContentName =
+                requestCachedContent ||
+                getValidPromptCache(promptCacheKey)?.name ||
+                null;
         }
+
+        const contents = [];
 
         if (messageHistory && Array.isArray(messageHistory)) {
             const recentHistory = messageHistory.slice(-MAX_HISTORY_MESSAGES);
             recentHistory.forEach((msg) => {
                 if (msg.role === 'user') {
-                    openAIMessages.push({ role: 'user', content: clampText(msg.content) });
+                    contents.push({ role: 'user', parts: [{ text: clampText(msg.content) }] });
                 } else if (msg.role === 'assistant') {
                     const assistantText = typeof msg.content === 'object' ? msg.content.response : msg.content;
-                    openAIMessages.push({ role: 'assistant', content: clampText(assistantText) });
+                    contents.push({ role: 'model', parts: [{ text: clampText(assistantText) }] });
                 }
             });
         }
 
-        openAIMessages.push({
+        contents.push({
             role: 'user',
-            content: clampText(userMessage),
+            parts: [{ text: clampText(userMessage) }],
         });
 
         const getRemainingBudget = () =>
             FUNCTION_TOTAL_TIMEOUT_MS - (Date.now() - requestStartedAt);
 
+        if (canUseContextCache && !cachedContentName) {
+            const { warmupMinChars, autoCreateEnabled } = getGeminiContextCacheConfig();
+            const hasEnoughBudgetForCacheCreate = getRemainingBudget() > FUNCTION_TIMEOUT_GUARD_MS + 3000;
+            const isFirstTurn = !Array.isArray(messageHistory) || messageHistory.length === 0;
+            const shouldCreateInline =
+                autoCreateEnabled &&
+                hasEnoughBudgetForCacheCreate &&
+                isFirstTurn &&
+                trimmedSystemPrompt.length >= warmupMinChars;
+
+            if (shouldCreateInline) {
+                const createdCache = await createPromptCacheEntry({
+                    apiKey,
+                    modelName: MODEL_NAME,
+                    characterId: normalizedCharacterId,
+                    systemPrompt: clampedSystemPrompt,
+                    cacheKey: promptCacheKey,
+                });
+
+                if (createdCache?.name) {
+                    cachedContentName = createdCache.name;
+                }
+            }
+        }
+
+        const isCacheLookupErrorMessage = (message) => {
+            const normalized = String(message || '').toLowerCase();
+            return (
+                normalized.includes('cachedcontent') ||
+                normalized.includes('cached content') ||
+                normalized.includes('not found') ||
+                normalized.includes('expired')
+            );
+        };
+
         const buildRequestPayload = ({
-            requestMessages,
+            requestContents,
             outputTokens,
-            useStructuredOutput,
-            tokenKey,
+            useCachedContent = true,
+            useJsonMimeType = true,
+            systemPromptText = '',
         }) => {
             const payload = {
-                model: MODEL_NAME,
-                messages: requestMessages,
+                contents: requestContents,
+                generationConfig: {
+                    maxOutputTokens: outputTokens,
+                },
             };
 
-            payload[tokenKey] = outputTokens;
+            if (useJsonMimeType) {
+                payload.generationConfig.responseMimeType = 'application/json';
+                payload.generationConfig.responseSchema = JSON_RESPONSE_SCHEMA;
+            }
 
-            if (useStructuredOutput) {
-                payload.response_format = {
-                    type: 'json_schema',
-                    json_schema: {
-                        name: 'vmate_response',
-                        strict: true,
-                        schema: OPENAI_RESPONSE_SCHEMA,
-                    },
+            if (useCachedContent && cachedContentName) {
+                payload.cachedContent = cachedContentName;
+            }
+
+            if (systemPromptText && (!useCachedContent || !cachedContentName)) {
+                payload.systemInstruction = {
+                    parts: [{ text: systemPromptText }],
                 };
             }
 
             return payload;
         };
 
-        const callOpenAIWithTimeout = async ({ payload, timeoutMs }) => {
+        const callGeminiWithTimeout = async ({ modelName, payload, timeoutMs }) => {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
             try {
                 const response = await fetch(
-                    'https://api.openai.com/v1/chat/completions',
+                    `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
                     {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            Authorization: `Bearer ${apiKey}`,
-                        },
+                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload),
                         signal: controller.signal,
                     }
@@ -583,7 +716,7 @@ export const handler = async (event, context) => {
                         data: null,
                         error: {
                             status: 502,
-                            message: 'Invalid response from OpenAI API.',
+                            message: 'Invalid response from Gemini API.',
                             code: 'UPSTREAM_INVALID_RESPONSE',
                         },
                     };
@@ -616,7 +749,7 @@ export const handler = async (event, context) => {
                         data: null,
                         error: {
                             status: 504,
-                            message: `Request timeout on model ${MODEL_NAME} (${timeoutMs}ms).`,
+                            message: `Request timeout on model ${modelName} (${timeoutMs}ms).`,
                             code: 'UPSTREAM_TIMEOUT',
                         },
                     };
@@ -628,7 +761,7 @@ export const handler = async (event, context) => {
                     data: null,
                     error: {
                         status: 503,
-                        message: 'Failed to connect to OpenAI API. Please try again later.',
+                        message: 'Failed to connect to Gemini API. Please try again later.',
                         code: 'UPSTREAM_CONNECTION_FAILED',
                     },
                 };
@@ -637,10 +770,9 @@ export const handler = async (event, context) => {
             }
         };
 
-        let openAIResponse;
-        let openAIData;
+        let geminiResponse;
+        let geminiData;
         let lastModelError = null;
-        let tokenKey = 'max_completion_tokens';
 
         const primaryTimeoutMs = Math.min(
             MODEL_TIMEOUT_MS,
@@ -654,12 +786,12 @@ export const handler = async (event, context) => {
                 code: 'FUNCTION_BUDGET_TIMEOUT',
             };
         } else {
-            let primaryResult = await callOpenAIWithTimeout({
+            let primaryResult = await callGeminiWithTimeout({
+                modelName: MODEL_NAME,
                 payload: buildRequestPayload({
-                    requestMessages: openAIMessages,
+                    requestContents: contents,
                     outputTokens: 320,
-                    useStructuredOutput: true,
-                    tokenKey,
+                    systemPromptText: cachedContentName ? '' : clampedSystemPrompt,
                 }),
                 timeoutMs: primaryTimeoutMs,
             });
@@ -667,53 +799,34 @@ export const handler = async (event, context) => {
             if (
                 !primaryResult.ok &&
                 primaryResult.error?.code === 'UPSTREAM_MODEL_ERROR' &&
-                isMaxCompletionTokensUnsupportedError(primaryResult.error?.message)
+                cachedContentName &&
+                isCacheLookupErrorMessage(primaryResult.error?.message)
             ) {
-                tokenKey = 'max_tokens';
-                const tokenFallbackTimeoutMs = Math.min(
+                removePromptCache(promptCacheKey);
+                cachedContentName = null;
+
+                const cacheResetRetryTimeoutMs = Math.min(
                     MODEL_TIMEOUT_MS,
                     Math.max(0, getRemainingBudget() - FUNCTION_TIMEOUT_GUARD_MS)
                 );
 
-                if (tokenFallbackTimeoutMs > 0) {
-                    primaryResult = await callOpenAIWithTimeout({
+                if (cacheResetRetryTimeoutMs > 0) {
+                    primaryResult = await callGeminiWithTimeout({
+                        modelName: MODEL_NAME,
                         payload: buildRequestPayload({
-                            requestMessages: openAIMessages,
+                            requestContents: contents,
                             outputTokens: 320,
-                            useStructuredOutput: true,
-                            tokenKey,
+                            useCachedContent: false,
+                            systemPromptText: clampedSystemPrompt,
                         }),
-                        timeoutMs: tokenFallbackTimeoutMs,
-                    });
-                }
-            }
-
-            if (
-                !primaryResult.ok &&
-                primaryResult.error?.code === 'UPSTREAM_MODEL_ERROR' &&
-                isStructuredOutputUnsupportedError(primaryResult.error?.message)
-            ) {
-                const fallbackFormatTimeoutMs = Math.min(
-                    MODEL_TIMEOUT_MS,
-                    Math.max(0, getRemainingBudget() - FUNCTION_TIMEOUT_GUARD_MS)
-                );
-
-                if (fallbackFormatTimeoutMs > 0) {
-                    primaryResult = await callOpenAIWithTimeout({
-                        payload: buildRequestPayload({
-                            requestMessages: openAIMessages,
-                            outputTokens: 320,
-                            useStructuredOutput: false,
-                            tokenKey,
-                        }),
-                        timeoutMs: fallbackFormatTimeoutMs,
+                        timeoutMs: cacheResetRetryTimeoutMs,
                     });
                 }
             }
 
             if (primaryResult.ok) {
-                openAIResponse = primaryResult.response;
-                openAIData = primaryResult.data;
+                geminiResponse = primaryResult.response;
+                geminiData = primaryResult.data;
                 lastModelError = null;
             } else {
                 lastModelError = primaryResult.error;
@@ -733,33 +846,27 @@ export const handler = async (event, context) => {
                             0,
                             Math.min(MAX_SYSTEM_PROMPT_CHARS, 900)
                         );
-                        const minimalMessages = [];
+                        const minimalContents = [
+                            {
+                                role: 'user',
+                                parts: [{ text: clampText(userMessage) }],
+                            },
+                        ];
 
-                        if (minimalSystemPrompt) {
-                            minimalMessages.push({
-                                role: 'system',
-                                content: minimalSystemPrompt,
-                            });
-                        }
-
-                        minimalMessages.push({
-                            role: 'user',
-                            content: clampText(userMessage),
-                        });
-
-                        const recoveryResult = await callOpenAIWithTimeout({
+                        const recoveryResult = await callGeminiWithTimeout({
+                            modelName: MODEL_NAME,
                             payload: buildRequestPayload({
-                                requestMessages: minimalMessages,
+                                requestContents: minimalContents,
                                 outputTokens: 220,
-                                useStructuredOutput: false,
-                                tokenKey,
+                                useCachedContent: false,
+                                systemPromptText: minimalSystemPrompt,
                             }),
                             timeoutMs: recoveryTimeoutMs,
                         });
 
                         if (recoveryResult.ok) {
-                            openAIResponse = recoveryResult.response;
-                            openAIData = recoveryResult.data;
+                            geminiResponse = recoveryResult.response;
+                            geminiData = recoveryResult.data;
                             lastModelError = null;
                         } else {
                             lastModelError = recoveryResult.error;
@@ -769,17 +876,21 @@ export const handler = async (event, context) => {
             }
         }
 
-        if (!openAIResponse || !openAIData) {
+        if (!geminiResponse || !geminiData) {
             const upstreamErrorCode = lastModelError?.code || 'UPSTREAM_UNKNOWN_ERROR';
+            const shouldUseFallbackPayload =
+                upstreamErrorCode === 'UPSTREAM_CONNECTION_FAILED' ||
+                upstreamErrorCode === 'UPSTREAM_TIMEOUT' ||
+                upstreamErrorCode === 'FUNCTION_BUDGET_TIMEOUT';
 
-            if (isConnectionRecoverableError(upstreamErrorCode)) {
+            if (shouldUseFallbackPayload) {
                 const fallbackPayload = buildUpstreamFallbackPayload(normalizedCharacterId);
                 return {
                     statusCode: 200,
                     headers: withElapsedHeader(headers, requestStartedAt),
                     body: JSON.stringify({
                         text: JSON.stringify(fallbackPayload),
-                        cachedContent: null,
+                        cachedContent: cachedContentName || null,
                         error_code: upstreamErrorCode,
                         elapsed_ms: Math.max(0, Date.now() - requestStartedAt),
                     }),
@@ -796,27 +907,28 @@ export const handler = async (event, context) => {
             };
         }
 
-        if (!openAIResponse.ok || openAIData.error) {
-            let errorMessage = 'Failed to get response from OpenAI API';
+        if (!geminiResponse.ok || geminiData.error) {
+            let errorMessage = 'Failed to get response from Gemini API';
             let errorCode = 'UPSTREAM_MODEL_ERROR';
 
-            if (openAIData.error) {
-                if (openAIData.error.message?.includes('API key') || openAIData.error.message?.includes('api_key')) {
-                    errorMessage = 'Invalid or expired API key. Please check your OPENAI_API_KEY in runtime secrets.';
-                    errorCode = 'UPSTREAM_AUTH_ERROR';
-                } else if (openAIData.error.message?.includes('quota') || openAIData.error.message?.includes('billing')) {
-                    errorMessage = 'OpenAI API quota exceeded. Please check your billing and usage limits.';
-                    errorCode = 'UPSTREAM_QUOTA_EXCEEDED';
-                } else if (openAIData.error.message?.includes('model') && openAIData.error.message?.includes('not found')) {
-                    errorMessage = `OpenAI model not found: ${MODEL_NAME}. Check OPENAI_MODEL_NAME.`;
-                    errorCode = 'UPSTREAM_MODEL_NOT_FOUND';
+            if (geminiData.error) {
+                if (geminiData.error.message?.includes('API_KEY') || geminiData.error.message?.includes('API key')) {
+                    errorMessage = 'Invalid or expired API key. Please check your GOOGLE_API_KEY in Cloudflare Worker secrets.';
+                } else if (geminiData.error.message?.includes('quota') || geminiData.error.message?.includes('Quota')) {
+                    errorMessage = 'API quota exceeded. Please check your Google Cloud billing.';
+                } else if (
+                    geminiData.error.message?.includes('location is not supported') ||
+                    geminiData.error.message?.includes('User location is not supported')
+                ) {
+                    errorMessage = 'Gemini API is not available in this server region. Deploy backend in a supported region or switch provider.';
+                    errorCode = 'UPSTREAM_LOCATION_UNSUPPORTED';
                 } else {
-                    errorMessage = openAIData.error.message || errorMessage;
+                    errorMessage = geminiData.error.message || errorMessage;
                 }
             }
 
             return {
-                statusCode: openAIResponse.status || 500,
+                statusCode: geminiResponse.status || 500,
                 headers: withElapsedHeader(headers, requestStartedAt),
                 body: JSON.stringify({
                     error: errorMessage,
@@ -825,11 +937,17 @@ export const handler = async (event, context) => {
             };
         }
 
-        let modelText = extractOpenAIResponseText(openAIData);
+        let modelText = extractGeminiResponseText(geminiData);
         if (!modelText) {
-            console.warn('[V-MATE] Empty OpenAI response text', {
-                finishReason: openAIData?.choices?.[0]?.finish_reason || null,
+            console.warn('[V-MATE] Empty Gemini response text', {
+                finishReason: geminiData?.candidates?.[0]?.finishReason || null,
+                promptBlockReason: geminiData?.promptFeedback?.blockReason || null,
             });
+
+            if (cachedContentName) {
+                removePromptCache(promptCacheKey);
+                cachedContentName = null;
+            }
 
             const emptyRecoveryTimeoutMs = Math.min(
                 5000,
@@ -841,39 +959,33 @@ export const handler = async (event, context) => {
                     0,
                     Math.min(MAX_SYSTEM_PROMPT_CHARS, 700)
                 );
-                const emptyRecoveryMessages = [];
-
-                if (minimalSystemPrompt) {
-                    emptyRecoveryMessages.push({
-                        role: 'system',
-                        content: minimalSystemPrompt,
-                    });
-                }
-
-                emptyRecoveryMessages.push({
+                const emptyRecoveryContents = [{
                     role: 'user',
-                    content: clampText(userMessage),
-                });
+                    parts: [{ text: clampText(userMessage) }],
+                }];
 
-                const emptyRecoveryResult = await callOpenAIWithTimeout({
+                const emptyRecoveryResult = await callGeminiWithTimeout({
+                    modelName: MODEL_NAME,
                     payload: buildRequestPayload({
-                        requestMessages: emptyRecoveryMessages,
+                        requestContents: emptyRecoveryContents,
                         outputTokens: 180,
-                        useStructuredOutput: false,
-                        tokenKey,
+                        useCachedContent: false,
+                        useJsonMimeType: true,
+                        systemPromptText: minimalSystemPrompt,
                     }),
                     timeoutMs: emptyRecoveryTimeoutMs,
                 });
 
                 if (emptyRecoveryResult.ok) {
-                    const recoveredText = extractOpenAIResponseText(emptyRecoveryResult.data);
+                    const recoveredText = extractGeminiResponseText(emptyRecoveryResult.data);
                     if (recoveredText) {
-                        openAIResponse = emptyRecoveryResult.response;
-                        openAIData = emptyRecoveryResult.data;
+                        geminiResponse = emptyRecoveryResult.response;
+                        geminiData = emptyRecoveryResult.data;
                         modelText = recoveredText;
                     } else {
                         console.warn('[V-MATE] Empty recovery response text after retry', {
-                            finishReason: emptyRecoveryResult.data?.choices?.[0]?.finish_reason || null,
+                            finishReason: emptyRecoveryResult.data?.candidates?.[0]?.finishReason || null,
+                            promptBlockReason: emptyRecoveryResult.data?.promptFeedback?.blockReason || null,
                         });
                     }
                 }
@@ -887,7 +999,7 @@ export const handler = async (event, context) => {
                 headers: withElapsedHeader(headers, requestStartedAt),
                 body: JSON.stringify({
                     text: JSON.stringify(fallbackPayload),
-                    cachedContent: null,
+                    cachedContent: cachedContentName || null,
                     error_code: 'UPSTREAM_EMPTY_RESPONSE',
                     elapsed_ms: Math.max(0, Date.now() - requestStartedAt),
                 }),
@@ -898,17 +1010,25 @@ export const handler = async (event, context) => {
         const isFormatFallback =
             normalizedPayload.response === '잠시 응답 형식이 불안정했어요. 한 번만 다시 말해줘.' &&
             normalizedPayload.inner_heart === '';
-
         const finalPayload = isFormatFallback
             ? buildUpstreamFallbackPayload(normalizedCharacterId)
             : normalizedPayload;
+        const responseCachedContent = cachedContentName || null;
+
+        if (canUseContextCache && promptCacheKey && responseCachedContent) {
+            const { ttlSeconds } = getGeminiContextCacheConfig();
+            promptCacheStore.set(promptCacheKey, {
+                name: responseCachedContent,
+                expireAtMs: Date.now() + Math.max(300, ttlSeconds) * 1000,
+            });
+        }
 
         return {
             statusCode: 200,
             headers: withElapsedHeader(headers, requestStartedAt),
             body: JSON.stringify({
                 text: JSON.stringify(finalPayload),
-                cachedContent: null,
+                cachedContent: responseCachedContent,
             }),
         };
     } catch (error) {
