@@ -264,6 +264,25 @@ const withElapsedHeader = (headers, startedAtMs) => ({
 });
 
 const ALLOWED_EMOTIONS = new Set(['normal', 'happy', 'confused', 'angry']);
+const JSON_RESPONSE_SCHEMA = {
+    type: 'OBJECT',
+    properties: {
+        emotion: {
+            type: 'STRING',
+            enum: ['normal', 'happy', 'confused', 'angry'],
+        },
+        inner_heart: {
+            type: 'STRING',
+        },
+        response: {
+            type: 'STRING',
+        },
+        narration: {
+            type: 'STRING',
+        },
+    },
+    required: ['emotion', 'inner_heart', 'response'],
+};
 
 const tryParseJsonObject = (text) => {
     if (!text || typeof text !== 'string') {
@@ -276,6 +295,42 @@ const tryParseJsonObject = (text) => {
     } catch {
         return null;
     }
+};
+
+const tryParseLooseJsonObject = (text) => {
+    if (!text || typeof text !== 'string') {
+        return null;
+    }
+
+    const normalizedQuotes = text
+        .replace(/[“”]/g, '"')
+        .replace(/[‘’]/g, "'")
+        .trim();
+
+    const candidates = [normalizedQuotes];
+
+    const quotedKeys = normalizedQuotes.replace(/([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*:)/g, '$1"$2"$3');
+    candidates.push(quotedKeys);
+
+    const singleToDouble = quotedKeys.replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, (_, value) => {
+        const escaped = String(value)
+            .replace(/\\/g, '\\\\')
+            .replace(/"/g, '\\"');
+        return `"${escaped}"`;
+    });
+    candidates.push(singleToDouble);
+
+    const noTrailingComma = singleToDouble.replace(/,\s*([}\]])/g, '$1');
+    candidates.push(noTrailingComma);
+
+    for (const candidate of candidates) {
+        const parsed = tryParseJsonObject(candidate);
+        if (parsed) {
+            return parsed;
+        }
+    }
+
+    return null;
 };
 
 const extractJsonObjectCandidates = (text) => {
@@ -349,7 +404,7 @@ const normalizeAssistantPayload = (rawText) => {
     if (!parsed) {
         const candidates = extractJsonObjectCandidates(normalizedText);
         for (const candidate of candidates) {
-            const maybeParsed = tryParseJsonObject(candidate);
+            const maybeParsed = tryParseJsonObject(candidate) || tryParseLooseJsonObject(candidate);
             if (maybeParsed) {
                 parsed = maybeParsed;
                 break;
@@ -358,7 +413,22 @@ const normalizeAssistantPayload = (rawText) => {
     }
 
     if (!parsed) {
-        return safeFallback;
+        const plainResponse = normalizedText
+            .replace(/^here is (the )?json requested:?/i, '')
+            .replace(/^json:?/i, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        if (!plainResponse) {
+            return safeFallback;
+        }
+
+        return {
+            emotion: 'normal',
+            inner_heart: '',
+            response: plainResponse.slice(0, 520),
+            narration: '',
+        };
     }
 
     const emotion = typeof parsed?.emotion === 'string' && parsed.emotion.trim()
@@ -604,6 +674,7 @@ export const handler = async (event, context) => {
 
             if (useJsonMimeType) {
                 payload.generationConfig.responseMimeType = 'application/json';
+                payload.generationConfig.responseSchema = JSON_RESPONSE_SCHEMA;
             }
 
             if (useCachedContent && cachedContentName) {
@@ -935,6 +1006,12 @@ export const handler = async (event, context) => {
         }
 
         const normalizedPayload = normalizeAssistantPayload(modelText);
+        const isFormatFallback =
+            normalizedPayload.response === '잠시 응답 형식이 불안정했어요. 한 번만 다시 말해줘.' &&
+            normalizedPayload.inner_heart === '';
+        const finalPayload = isFormatFallback
+            ? buildUpstreamFallbackPayload(normalizedCharacterId)
+            : normalizedPayload;
         const responseCachedContent = cachedContentName || null;
 
         if (canUseContextCache && promptCacheKey && responseCachedContent) {
@@ -949,7 +1026,7 @@ export const handler = async (event, context) => {
             statusCode: 200,
             headers: withElapsedHeader(headers, requestStartedAt),
             body: JSON.stringify({
-                text: JSON.stringify(normalizedPayload),
+                text: JSON.stringify(finalPayload),
                 cachedContent: responseCachedContent,
             }),
         };
