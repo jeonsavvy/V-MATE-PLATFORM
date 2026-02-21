@@ -22,8 +22,9 @@ graph TD
 
 ## 현재 구현 기능
 
-- **Dual Psychology 출력**: `emotion`, `inner_heart`, `response`
-- **표정 변경**: 응답 emotion 값에 따라 캐릭터 이미지 변경
+- **Dual Psychology 출력**: `emotion`, `inner_heart`, `response` (+ `narration` optional)
+- **표정 변화 연출**: assistant emotion이 바뀌는 턴에 일러스트 카드 표시
+- **상황 설명 텍스트**: `narration`을 대사 버블과 분리 렌더
 - **하이브리드 저장**:
   - 비로그인: LocalStorage
   - 로그인: Supabase `chat_messages` 테이블
@@ -34,7 +35,7 @@ graph TD
 - **JSON Mode 요청**: `responseMimeType: "application/json"`
 - **Origin allowlist CORS**: `ALLOWED_ORIGINS` 기반 허용
 - **요청 제한**: Origin/IP 키 기반 rate limit 적용
-- **응답 정규화**: 서버에서 `emotion / inner_heart / response` 스키마 보정 후 반환
+- **응답 정규화**: 서버에서 `emotion / inner_heart / response`(+ `narration` optional) 스키마 보정 후 반환
 - **프롬프트 모듈 분리**: `src/lib/prompts/*`에서 캐릭터별 시스템 프롬프트 관리
 - **UI 리프레시**: 홈/채팅 화면 글래스모피즘+그라디언트 기반 시각 개선
 
@@ -62,18 +63,18 @@ VITE_CHAT_API_BASE_URL=
 GOOGLE_API_KEY=...
 
 # Optional
-GEMINI_HISTORY_MESSAGES=20
-GEMINI_MAX_PART_CHARS=1200
-GEMINI_MAX_SYSTEM_PROMPT_CHARS=3500
-GEMINI_MODEL_TIMEOUT_MS=14000
-FUNCTION_TOTAL_TIMEOUT_MS=17000
-FUNCTION_TIMEOUT_GUARD_MS=1500
+GEMINI_HISTORY_MESSAGES=8
+GEMINI_MAX_PART_CHARS=700
+GEMINI_MAX_SYSTEM_PROMPT_CHARS=1800
+GEMINI_MODEL_TIMEOUT_MS=10000
+FUNCTION_TOTAL_TIMEOUT_MS=13000
+FUNCTION_TIMEOUT_GUARD_MS=1200
 GEMINI_MODEL_NAME=gemini-3-flash-preview
 GEMINI_CONTEXT_CACHE_ENABLED=true
 GEMINI_CONTEXT_CACHE_TTL_SECONDS=21600
 GEMINI_CONTEXT_CACHE_CREATE_TIMEOUT_MS=1800
 GEMINI_CONTEXT_CACHE_WARMUP_MIN_CHARS=1200
-GEMINI_CONTEXT_CACHE_AUTO_CREATE=false
+GEMINI_CONTEXT_CACHE_AUTO_CREATE=true
 ALLOWED_ORIGINS=http://localhost:5173,https://your-domain.com
 ALLOW_ALL_ORIGINS=false
 RATE_LIMIT_WINDOW_MS=60000
@@ -100,18 +101,20 @@ npm run cf:dev
 
 ## 설정 메모
 
-- 기본 히스토리 윈도우: `GEMINI_HISTORY_MESSAGES` (기본 20)
+- 기본 히스토리 윈도우: `GEMINI_HISTORY_MESSAGES` (기본 8)
 - 모델: 기본 `gemini-3-flash-preview` (필요 시 `GEMINI_MODEL_NAME`으로 오버라이드, 모델 fallback 없음)
+- 모델 최대 출력 토큰: 320 (`server/chat-handler.js`의 `generationConfig.maxOutputTokens`)
 - 동일 모델 재시도: 없음(0회, 단일 시도)
-- 시스템 프롬프트 최대 길이: `GEMINI_MAX_SYSTEM_PROMPT_CHARS` (기본 3500)
-- 모델 요청 타임아웃: `GEMINI_MODEL_TIMEOUT_MS` (기본 14000ms)
-- Worker 함수 총 실행 예산: `FUNCTION_TOTAL_TIMEOUT_MS` (기본 17000ms)
-- 함수 종료 가드: `FUNCTION_TIMEOUT_GUARD_MS` (기본 1500ms)
+- 시스템 프롬프트 최대 길이: `GEMINI_MAX_SYSTEM_PROMPT_CHARS` (기본 1800)
+- 요청 파트 최대 길이: `GEMINI_MAX_PART_CHARS` (기본 700)
+- 모델 요청 타임아웃: `GEMINI_MODEL_TIMEOUT_MS` (기본 10000ms)
+- Worker 함수 총 실행 예산: `FUNCTION_TOTAL_TIMEOUT_MS` (기본 13000ms)
+- 함수 종료 가드: `FUNCTION_TIMEOUT_GUARD_MS` (기본 1200ms)
 - Gemini Context Cache: `GEMINI_CONTEXT_CACHE_ENABLED` (기본 true)
 - Context Cache TTL: `GEMINI_CONTEXT_CACHE_TTL_SECONDS` (기본 21600초)
 - Cache 생성 타임아웃: `GEMINI_CONTEXT_CACHE_CREATE_TIMEOUT_MS` (기본 1800ms)
 - Cache 워밍 기준 길이: `GEMINI_CONTEXT_CACHE_WARMUP_MIN_CHARS` (기본 1200자)
-- Cache 자동 생성: `GEMINI_CONTEXT_CACHE_AUTO_CREATE` (기본 false)
+- Cache 자동 생성: `GEMINI_CONTEXT_CACHE_AUTO_CREATE` (기본 true)
 - 기본 Rate Limit: 60초당 30회(`RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX_REQUESTS`)
 - CORS는 `ALLOWED_ORIGINS`에 등록된 Origin만 허용
 - 클라이언트에서 service role key 감지 시 Supabase를 비활성화하고 placeholder client로 대체
@@ -136,14 +139,14 @@ npm run cf:dev
   - `src/lib/prompts/alice.ts`
   - `src/lib/prompts/kael.ts`
 - `src/lib/data.ts`에서는 캐릭터 메타/이미지/인사말만 유지하고, 시스템 프롬프트는 모듈 import로 조합합니다.
-- 출력 계약은 기존과 동일하게 `emotion`, `inner_heart`, `response` JSON 스키마를 사용합니다.
+- 출력 계약은 `emotion`, `inner_heart`, `response` 필수 + `narration` 선택 스키마를 사용합니다.
 
 ---
 
 ## 주의사항 (현재 상태)
 
 - 운영 중 CORS 긴급 완화가 필요하면 `ALLOW_ALL_ORIGINS=true`로 일시 완화할 수 있습니다(기본값은 `false` 권장).
-- 대화 히스토리 기본값은 20이며, `GEMINI_HISTORY_MESSAGES`로 조정할 수 있습니다.
+- 대화 히스토리 기본값은 8이며, `GEMINI_HISTORY_MESSAGES`로 조정할 수 있습니다.
 
 ---
 

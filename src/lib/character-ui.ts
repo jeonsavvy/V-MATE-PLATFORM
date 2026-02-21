@@ -14,8 +14,8 @@ export const CHARACTER_FILTERS: CharacterFilter[] = ["전체", "추천", "2차 �
 export const CHARACTER_UI_META: Record<string, CharacterUiMeta> = {
   mika: {
     badge: "2차 창작",
-    tags: ["남성향", "학원", "아이돌"],
-    summary: "빛나는 무대 위 아이돌이지만, 나에게만은 솔직한 감정을 숨기지 않는다.",
+    tags: ["남성향", "학원", "트리니티"],
+    summary: "트리니티의 미소노 미카. 장난스럽고 다정한 말투 속에 선생님을 향한 솔직한 진심이 비친다.",
     heroQuote: "딴청 피우지 말고, 내 눈을 봐줘.",
     heroObjectPosition: "center 14%",
     filters: ["2차 창작"],
@@ -30,8 +30,8 @@ export const CHARACTER_UI_META: Record<string, CharacterUiMeta> = {
   },
   kael: {
     badge: "추천",
-    tags: ["게임", "친구", "현대"],
-    summary: "무심한 듯 장난스럽지만, 결정적인 순간엔 누구보다 빠르게 내 편이 된다.",
+    tags: ["게임", "츤데레", "현대"],
+    summary: "랭크 게임에 진심인 무심파. 툴툴대도 중요한 순간엔 누구보다 빠르게 챙겨준다.",
     heroQuote: "짧게 말해. 대신 끝까지 들어줄게.",
     heroObjectPosition: "center 10%",
     filters: ["추천"],

@@ -24,6 +24,7 @@ export interface AIResponse {
   emotion: "normal" | "happy" | "confused" | "angry"
   inner_heart: string
   response: string
+  narration?: string
 }
 
 export const CHARACTERS: Record<string, Character> = {

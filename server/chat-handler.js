@@ -68,6 +68,7 @@ const buildUpstreamFallbackPayload = (characterId) => {
             emotion: 'normal',
             inner_heart: '선생님이 기다렸을 텐데... 잠깐 숨 고르고 다시 집중하자.',
             response: '선생님, 방금 신호가 살짝 흔들렸어. 한 번만 다시 말해줘. 이번엔 제대로 들을게.',
+            narration: '',
         };
     }
 
@@ -76,6 +77,7 @@ const buildUpstreamFallbackPayload = (characterId) => {
             emotion: 'normal',
             inner_heart: '연결이 순간 흔들렸군. 침착하게 다시 정비하면 된다.',
             response: '통신이 잠시 불안정했다. 같은 내용을 한 번 더 전해주겠는가.',
+            narration: '',
         };
     }
 
@@ -84,6 +86,7 @@ const buildUpstreamFallbackPayload = (characterId) => {
             emotion: 'normal',
             inner_heart: '아... 튕겼네. 기다리게 해서 미안한데 다시 받으면 된다.',
             response: '지금 신호 잠깐 튐. 한 번만 다시 보내줘.',
+            narration: '',
         };
     }
 
@@ -91,6 +94,7 @@ const buildUpstreamFallbackPayload = (characterId) => {
         emotion: 'normal',
         inner_heart: '응답 연결이 잠시 불안정했다.',
         response: '연결이 잠시 흔들렸어요. 같은 내용을 한 번만 다시 보내주세요.',
+        narration: '',
     };
 };
 
@@ -254,11 +258,17 @@ const buildHeaders = (originAllowed, origin) => {
     };
 };
 
+const withElapsedHeader = (headers, startedAtMs) => ({
+    ...headers,
+    'X-V-MATE-Elapsed-Ms': String(Math.max(0, Date.now() - startedAtMs)),
+});
+
 const normalizeAssistantPayload = (rawText) => {
     const safeFallback = {
         emotion: 'normal',
         inner_heart: '',
         response: '잠시 응답 형식이 불안정했어요. 한 번만 다시 말해줘.',
+        narration: '',
     };
 
     if (!rawText || typeof rawText !== 'string') {
@@ -286,14 +296,20 @@ const normalizeAssistantPayload = (rawText) => {
         ? parsed.response.trim()
         : safeFallback.response;
 
+    const narration = typeof parsed?.narration === 'string'
+        ? parsed.narration.trim()
+        : '';
+
     return {
         emotion,
         inner_heart: innerHeart,
         response,
+        narration,
     };
 };
 
 export const handler = async (event, context) => {
+    const requestStartedAt = Date.now();
     const origin = event.headers?.origin || event.headers?.Origin;
     const originAllowed = isOriginAllowed(origin);
     const headers = buildHeaders(originAllowed, origin);
@@ -303,14 +319,14 @@ export const handler = async (event, context) => {
         if (!originAllowed) {
             return {
                 statusCode: 403,
-                headers,
+                headers: withElapsedHeader(headers, requestStartedAt),
                 body: JSON.stringify({ error: 'Origin is not allowed.' }),
             };
         }
 
         return {
             statusCode: 200,
-            headers,
+            headers: withElapsedHeader(headers, requestStartedAt),
             body: '',
         };
     }
@@ -319,7 +335,7 @@ export const handler = async (event, context) => {
     if (event.httpMethod !== 'POST') {
         return {
             statusCode: 405,
-            headers,
+            headers: withElapsedHeader(headers, requestStartedAt),
             body: JSON.stringify({ error: 'Method not allowed' }),
         };
     }
@@ -327,7 +343,7 @@ export const handler = async (event, context) => {
     if (!originAllowed) {
         return {
             statusCode: 403,
-            headers,
+            headers: withElapsedHeader(headers, requestStartedAt),
             body: JSON.stringify({ error: 'Origin is not allowed.' }),
         };
     }
@@ -337,10 +353,10 @@ export const handler = async (event, context) => {
     if (!rateStatus.allowed) {
         return {
             statusCode: 429,
-            headers: {
+            headers: withElapsedHeader({
                 ...headers,
                 'Retry-After': String(Math.ceil(rateStatus.retryAfterMs / 1000)),
-            },
+            }, requestStartedAt),
             body: JSON.stringify({
                 error: 'Too many requests. Please try again later.',
             }),
@@ -353,7 +369,7 @@ export const handler = async (event, context) => {
         if (!apiKey) {
             return {
                 statusCode: 500,
-                headers,
+                headers: withElapsedHeader(headers, requestStartedAt),
                 body: JSON.stringify({
                     error: 'API key not configured. Please set GOOGLE_API_KEY in runtime secrets.',
                 }),
@@ -367,7 +383,7 @@ export const handler = async (event, context) => {
         } catch (parseError) {
             return {
                 statusCode: 400,
-                headers,
+                headers: withElapsedHeader(headers, requestStartedAt),
                 body: JSON.stringify({
                     error: 'Invalid request body. Expected JSON format.',
                     details: parseError.message,
@@ -380,19 +396,19 @@ export const handler = async (event, context) => {
         if (!userMessage || typeof userMessage !== 'string' || userMessage.trim().length === 0) {
             return {
                 statusCode: 400,
-                headers,
+                headers: withElapsedHeader(headers, requestStartedAt),
                 body: JSON.stringify({
                     error: 'userMessage is required and must be a non-empty string.',
                 }),
             };
         }
 
-        const MAX_HISTORY_MESSAGES = Number(process.env.GEMINI_HISTORY_MESSAGES || 20);
-        const MAX_PART_CHARS = Number(process.env.GEMINI_MAX_PART_CHARS || 1200);
-        const MAX_SYSTEM_PROMPT_CHARS = Number(process.env.GEMINI_MAX_SYSTEM_PROMPT_CHARS || 3500);
-        const MODEL_TIMEOUT_MS = Number(process.env.GEMINI_MODEL_TIMEOUT_MS || 14000);
-        const FUNCTION_TOTAL_TIMEOUT_MS = Number(process.env.FUNCTION_TOTAL_TIMEOUT_MS || 17000);
-        const FUNCTION_TIMEOUT_GUARD_MS = Number(process.env.FUNCTION_TIMEOUT_GUARD_MS || 1500);
+        const MAX_HISTORY_MESSAGES = Number(process.env.GEMINI_HISTORY_MESSAGES || 8);
+        const MAX_PART_CHARS = Number(process.env.GEMINI_MAX_PART_CHARS || 700);
+        const MAX_SYSTEM_PROMPT_CHARS = Number(process.env.GEMINI_MAX_SYSTEM_PROMPT_CHARS || 1800);
+        const MODEL_TIMEOUT_MS = Number(process.env.GEMINI_MODEL_TIMEOUT_MS || 10000);
+        const FUNCTION_TOTAL_TIMEOUT_MS = Number(process.env.FUNCTION_TOTAL_TIMEOUT_MS || 13000);
+        const FUNCTION_TIMEOUT_GUARD_MS = Number(process.env.FUNCTION_TIMEOUT_GUARD_MS || 1200);
         const clampText = (value) => String(value ?? '').slice(0, MAX_PART_CHARS);
         const clampSystemPrompt = (value) => String(value ?? '').slice(0, MAX_SYSTEM_PROMPT_CHARS);
 
@@ -449,7 +465,6 @@ export const handler = async (event, context) => {
             });
         }
         contentsWithSystemPrompt.push(...contents);
-        const requestStartedAt = Date.now();
         const getRemainingBudget = () =>
             FUNCTION_TOTAL_TIMEOUT_MS - (Date.now() - requestStartedAt);
 
@@ -503,7 +518,7 @@ export const handler = async (event, context) => {
                     contents: cachedContentName ? contents : contentsWithSystemPrompt,
                     generationConfig: {
                         responseMimeType: 'application/json',
-                        maxOutputTokens: 768,
+                        maxOutputTokens: 320,
                     },
                 };
 
@@ -586,7 +601,7 @@ export const handler = async (event, context) => {
                 const fallbackPayload = buildUpstreamFallbackPayload(normalizedCharacterId);
                 return {
                     statusCode: 200,
-                    headers,
+                    headers: withElapsedHeader(headers, requestStartedAt),
                     body: JSON.stringify({
                         text: JSON.stringify(fallbackPayload),
                         cachedContent: cachedContentName || null,
@@ -597,7 +612,7 @@ export const handler = async (event, context) => {
 
             return {
                 statusCode: lastModelError?.status || 503,
-                headers,
+                headers: withElapsedHeader(headers, requestStartedAt),
                 body: JSON.stringify({
                     error: lastModelError?.message || 'Model call failed. Please try again later.',
                     error_code: upstreamErrorCode,
@@ -627,7 +642,7 @@ export const handler = async (event, context) => {
 
             return {
                 statusCode: geminiResponse.status || 500,
-                headers,
+                headers: withElapsedHeader(headers, requestStartedAt),
                 body: JSON.stringify({
                     error: errorMessage,
                     error_code: errorCode,
@@ -638,7 +653,7 @@ export const handler = async (event, context) => {
         if (!geminiData.candidates || !geminiData.candidates[0] || !geminiData.candidates[0].content?.parts?.[0]?.text) {
             return {
                 statusCode: 502,
-                headers,
+                headers: withElapsedHeader(headers, requestStartedAt),
                 body: JSON.stringify({ error: 'Invalid response format from Gemini API.' }),
             };
         }
@@ -656,7 +671,7 @@ export const handler = async (event, context) => {
 
         return {
             statusCode: 200,
-            headers,
+            headers: withElapsedHeader(headers, requestStartedAt),
             body: JSON.stringify({
                 text: JSON.stringify(normalizedPayload),
                 cachedContent: responseCachedContent,
@@ -667,7 +682,7 @@ export const handler = async (event, context) => {
 
         return {
             statusCode: 500,
-            headers,
+            headers: withElapsedHeader(headers, requestStartedAt),
             body: JSON.stringify({
                 error: 'Internal server error. Please try again later.',
                 ...(process.env.CLOUDFLARE_DEV && { details: error.message }),

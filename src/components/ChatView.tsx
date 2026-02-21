@@ -67,6 +67,13 @@ const resolveChatApiUrl = (): string => {
   return baseUrl.endsWith("/api/chat") ? baseUrl : `${baseUrl}/api/chat`
 }
 
+const EMOTION_LABELS: Record<AIResponse["emotion"], string> = {
+  normal: "기본 표정",
+  happy: "기분 좋아짐",
+  confused: "당황한 표정",
+  angry: "감정 고조",
+}
+
 export function ChatView({ character, onCharacterChange, user, onBack }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -87,6 +94,29 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
   const messagesRef = useRef(messages)
   const chatApiUrlRef = useRef(resolveChatApiUrl())
   const getPromptCacheKey = (charId: string) => `gemini_cached_content_${charId}`
+  const resolveEmotionImage = (emotion?: AIResponse["emotion"]) => {
+    if (emotion === "confused" && character.images.confused) {
+      return character.images.confused
+    }
+    if (emotion === "happy" && character.images.happy) {
+      return character.images.happy
+    }
+    if (emotion === "angry") {
+      return character.images.angry
+    }
+    return character.images.normal
+  }
+
+  const findPreviousAssistantEmotion = (targetIndex: number): AIResponse["emotion"] | null => {
+    for (let i = targetIndex - 1; i >= 0; i -= 1) {
+      const candidate = messages[i]
+      if (candidate.role !== "assistant" || typeof candidate.content === "string") {
+        continue
+      }
+      return candidate.content.emotion
+    }
+    return null
+  }
 
   useEffect(() => {
     messagesRef.current = messages
@@ -477,7 +507,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
       }))
 
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 20000)
+      const timeoutId = setTimeout(() => controller.abort(), 12000)
 
       let response
       const cacheStorageKey = getPromptCacheKey(character.id)
@@ -564,6 +594,9 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
         parsed = JSON.parse(jsonStr)
         if (!parsed.emotion || !parsed.response) {
           throw new Error("응답 형식이 올바르지 않습니다.")
+        }
+        if (typeof parsed.narration === "string") {
+          parsed.narration = parsed.narration.trim()
         }
       } catch (parseError) {
         parsed = {
@@ -762,22 +795,6 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
     })
   }
 
-  const currentEmotion = messages.length > 0 && typeof messages[messages.length - 1].content !== "string"
-    ? (messages[messages.length - 1].content as AIResponse).emotion
-    : "normal"
-
-  let imageKey: keyof typeof character.images = "normal"
-  if (currentEmotion === "confused" && character.images.confused) {
-    imageKey = "confused"
-  } else if (currentEmotion === "happy" && character.images.happy) {
-    imageKey = "happy"
-  } else if (currentEmotion === "angry") {
-    imageKey = "angry"
-  } else if (currentEmotion === "normal") {
-    imageKey = "normal"
-  }
-
-  const characterImage = character.images[imageKey] || character.images.normal
   const characterMeta = CHARACTER_UI_META[character.id]
   const historyCharacterEntries = Object.entries(historyPreviews)
     .filter(([, preview]) => preview.hasHistory)
@@ -889,10 +906,21 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
             <div className="mx-auto w-full max-w-4xl space-y-6">
               <p className="text-center text-xs text-[#8f887d]">이 대화는 AI로 생성된 가상의 이야기입니다</p>
 
-              {messages.map((msg) => {
+              {messages.map((msg, index) => {
                 const isUser = msg.role === "user"
+                const assistantPayload = typeof msg.content === "string" ? null : msg.content
                 const content = typeof msg.content === "string" ? msg.content : msg.content.response
-                const innerHeart = typeof msg.content === "string" ? null : msg.content.inner_heart
+                const innerHeart = assistantPayload?.inner_heart ?? null
+                const narration = typeof assistantPayload?.narration === "string" ? assistantPayload.narration.trim() : ""
+                const emotion = assistantPayload?.emotion
+                const previousEmotion = !isUser ? findPreviousAssistantEmotion(index) : null
+                const showIllustrationCard = Boolean(
+                  !isUser &&
+                  emotion &&
+                  previousEmotion &&
+                  emotion !== previousEmotion
+                )
+                const messageImage = resolveEmotionImage(emotion)
 
                 return (
                   <div
@@ -910,27 +938,49 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
                     >
                       {!isUser && (
                         <Avatar
-                          src={characterImage}
+                          src={messageImage}
                           alt={character.name}
                           fallback={character.name[0]}
                           className="size-10 shrink-0 border border-black/10 object-cover object-top"
                         />
                       )}
 
-                      <div
-                        className={cn(
-                          "rounded-2xl p-4 text-sm leading-relaxed shadow-[0_16px_28px_-22px_rgba(34,35,43,0.45)]",
-                          isUser
-                            ? "rounded-br-sm bg-gradient-to-br from-[#3b3d45] to-[#2f3138] text-[#f8f7f4]"
-                            : "rounded-bl-sm border border-white/50 bg-[#f8f4ee]/84 text-[#2a2d35] backdrop-blur-md"
-                        )}
-                      >
-                        {!isUser && innerHeart && (
-                          <div className="mb-3 rounded-xl border border-[#dfd1df] bg-[#f9f0f7]/90 p-3 text-xs font-semibold text-[#775a74]">
-                            💭 {innerHeart}
+                      <div className="min-w-0 flex-1">
+                        {showIllustrationCard && emotion && (
+                          <div className="mb-3 overflow-hidden rounded-2xl border border-white/55 bg-white/75 shadow-[0_18px_32px_-24px_rgba(24,23,20,0.72)]">
+                            <img
+                              src={messageImage}
+                              alt={`${character.name} ${emotion}`}
+                              className="h-auto w-full object-cover object-top"
+                              loading="lazy"
+                            />
+                            <div className="border-t border-black/5 bg-[#f6f1e9] px-3 py-2 text-[11px] font-semibold text-[#6f685d]">
+                              {character.name} · {EMOTION_LABELS[emotion]}
+                            </div>
                           </div>
                         )}
-                        <div className="whitespace-pre-wrap">{content}</div>
+
+                        {!isUser && narration && (
+                          <div className="mb-3 rounded-xl border border-[#ddd3c5] bg-[#efe8dc]/88 p-3 text-xs leading-relaxed text-[#5f584d]">
+                            {narration}
+                          </div>
+                        )}
+
+                        <div
+                          className={cn(
+                            "rounded-2xl p-4 text-sm leading-relaxed shadow-[0_16px_28px_-22px_rgba(34,35,43,0.45)]",
+                            isUser
+                              ? "rounded-br-sm bg-gradient-to-br from-[#3b3d45] to-[#2f3138] text-[#f8f7f4]"
+                              : "rounded-bl-sm border border-white/50 bg-[#f8f4ee]/84 text-[#2a2d35] backdrop-blur-md"
+                          )}
+                        >
+                          {!isUser && innerHeart && (
+                            <div className="mb-3 rounded-xl border border-[#dfd1df] bg-[#f9f0f7]/90 p-3 text-xs font-semibold text-[#775a74]">
+                              💭 {innerHeart}
+                            </div>
+                          )}
+                          <div className="whitespace-pre-wrap">{content}</div>
+                        </div>
                       </div>
                     </div>
                   </div>
