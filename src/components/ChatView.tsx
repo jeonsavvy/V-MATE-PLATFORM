@@ -474,7 +474,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
       const cacheStorageKey = getPromptCacheKey(character.id)
       const cachedContent = localStorage.getItem(cacheStorageKey)
       try {
-        response = await fetch("/.netlify/functions/chat", {
+        response = await fetch("/api/chat", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

@@ -44,5 +44,6 @@ Thumbs.db
 venv
 .venv
 
-# Local Netlify folder
-.netlify
+# Local deployment folders
+.wrangler
+cloudflare-env.d.ts

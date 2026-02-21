@@ -2,8 +2,8 @@
  * V-MATE - Frontend Logic
  * 
  * 이 파일은 V-MATE의 클라이언트 사이드 로직을 담당합니다.
- * API 키는 서버 사이드(Netlify Function)에서 관리되므로 클라이언트에는 노출되지 않습니다.
- * 보안을 위해 모든 API 호출은 Netlify Functions를 통해 프록시됩니다.
+ * API 키는 서버 사이드(Cloudflare Worker)에서 관리되므로 클라이언트에는 노출되지 않습니다.
+ * 보안을 위해 모든 API 호출은 Cloudflare Workers를 통해 프록시됩니다.
  */
 
 // ============================================
@@ -300,7 +300,7 @@ function removeLoading(id) {
 /**
  * 메시지 전송 함수 (핵심 함수)
  * 
- * 사용자가 입력한 메시지를 Netlify Function으로 전송하여 AI 응답을 받아옵니다.
+ * 사용자가 입력한 메시지를 Cloudflare Worker으로 전송하여 AI 응답을 받아옵니다.
  * 
  * [기획 의도]
  * 1. 이중 심리 시스템 구현: 각 캐릭터는 내면의 속마음(inner_heart)과 실제 말(response)을 분리하여 표현
@@ -316,13 +316,13 @@ function removeLoading(id) {
  * 
  * 보안 아키텍처:
  * - 클라이언트에서 직접 Gemini API를 호출하지 않음
- * - Netlify Function을 프록시로 사용하여 API 키를 서버 사이드에서만 관리
- * - 모든 요청은 `/.netlify/functions/chat` 엔드포인트로 전송
+ * - Cloudflare Worker을 프록시로 사용하여 API 키를 서버 사이드에서만 관리
+ * - 모든 요청은 `/api/chat` 엔드포인트로 전송
  * 
  * 동작 흐름:
  * 1. 사용자 메시지를 UI에 표시
  * 2. 대화 히스토리에 메시지 추가 (컨텍스트 유지)
- * 3. Netlify Function으로 POST 요청 전송 (시스템 프롬프트, 사용자 메시지, 히스토리 포함)
+ * 3. Cloudflare Worker으로 POST 요청 전송 (시스템 프롬프트, 사용자 메시지, 히스토리 포함)
  * 4. 응답을 JSON으로 파싱 (emotion, inner_heart, response)
  * 5. 감정에 따라 캐릭터 이미지 변경 (normal/happy/angry)
  * 6. AI 응답을 UI에 표시 (속마음 + 실제 말)
@@ -347,7 +347,7 @@ async function sendMessage() {
     const loadingId = addLoading(); // 로딩 표시
 
     try {
-        // 3. Netlify Function 호출 (보안을 위해 백엔드 프록시로 요청)
+        // 3. Cloudflare Worker 호출 (보안을 위해 백엔드 프록시로 요청)
         // API 키는 서버 사이드에서 환경 변수로 관리되므로 클라이언트에 노출되지 않음
         // 타임아웃 설정: 30초 내 응답이 없으면 네트워크 오류로 간주
         const controller = new AbortController();
@@ -355,7 +355,7 @@ async function sendMessage() {
 
         let response;
         try {
-            response = await fetch('/.netlify/functions/chat', {
+            response = await fetch('/api/chat', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'

@@ -1,5 +1,5 @@
 /**
- * Netlify Serverless Function: Gemini API 중계 서버
+ * Cloudflare Worker Chat Handler: Gemini API 중계 서버
  * - API key 은닉
  * - Origin allowlist 기반 CORS
  * - Origin/IP 기반 rate limit
@@ -355,7 +355,7 @@ export const handler = async (event, context) => {
                 statusCode: 500,
                 headers,
                 body: JSON.stringify({
-                    error: 'API key not configured. Please set GOOGLE_API_KEY in Netlify environment variables.',
+                    error: 'API key not configured. Please set GOOGLE_API_KEY in Cloudflare Worker secrets.',
                 }),
             };
         }
@@ -387,7 +387,7 @@ export const handler = async (event, context) => {
             };
         }
 
-        const MAX_HISTORY_MESSAGES = Number(process.env.GEMINI_HISTORY_MESSAGES || 6);
+        const MAX_HISTORY_MESSAGES = Number(process.env.GEMINI_HISTORY_MESSAGES || 20);
         const MAX_PART_CHARS = Number(process.env.GEMINI_MAX_PART_CHARS || 1200);
         const MAX_SYSTEM_PROMPT_CHARS = Number(process.env.GEMINI_MAX_SYSTEM_PROMPT_CHARS || 3500);
         const MODEL_TIMEOUT_MS = Number(process.env.GEMINI_MODEL_TIMEOUT_MS || 14000);
@@ -610,7 +610,7 @@ export const handler = async (event, context) => {
 
             if (geminiData.error) {
                 if (geminiData.error.message?.includes('API_KEY') || geminiData.error.message?.includes('API key')) {
-                    errorMessage = 'Invalid or expired API key. Please check your GOOGLE_API_KEY in Netlify environment variables.';
+                    errorMessage = 'Invalid or expired API key. Please check your GOOGLE_API_KEY in Cloudflare Worker secrets.';
                 } else if (geminiData.error.message?.includes('quota') || geminiData.error.message?.includes('Quota')) {
                     errorMessage = 'API quota exceeded. Please check your Google Cloud billing.';
                 } else {
@@ -663,7 +663,7 @@ export const handler = async (event, context) => {
             headers,
             body: JSON.stringify({
                 error: 'Internal server error. Please try again later.',
-                ...(process.env.NETLIFY_DEV && { details: error.message }),
+                ...(process.env.CLOUDFLARE_DEV && { details: error.message }),
             }),
         };
     }

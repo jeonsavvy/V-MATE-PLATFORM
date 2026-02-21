@@ -9,7 +9,7 @@
 ```mermaid
 graph TD
     U["User"] --> A["React + Vite Client"]
-    A -->|"POST /.netlify/functions/chat"| B["Netlify Function"]
+    A -->|"POST /api/chat"| B["Cloudflare Worker"]
     B --> C["Google Gemini API"]
     C -->|"JSON response"| B
     B -->|"Normalized JSON string"| A
@@ -27,7 +27,7 @@ graph TD
 - **하이브리드 저장**:
   - 비로그인: LocalStorage
   - 로그인: Supabase `chat_messages` 테이블
-- **서버리스 프록시**: Gemini API Key는 Netlify Function에서만 사용
+- **서버리스 프록시**: Gemini API Key는 Cloudflare Worker에서만 사용
 - **모델 고정**: 기본 `gemini-3-flash-preview` 단일 모델 사용 (환경 변수로 오버라이드 가능)
 - **동일 모델 재시도 없음**: 모델 요청은 단일 시도로만 처리
 - **Gemini Context Cache 재사용**: 캐릭터별 시스템 프롬프트 캐시를 `cachedContent`로 재사용해 재요청 비용 절감
@@ -57,11 +57,11 @@ npm install
 VITE_SUPABASE_URL=...
 VITE_SUPABASE_ANON_KEY=...
 
-# Netlify Function
+# Cloudflare Worker Secret/Vars
 GOOGLE_API_KEY=...
 
 # Optional
-GEMINI_HISTORY_MESSAGES=6
+GEMINI_HISTORY_MESSAGES=20
 GEMINI_MAX_PART_CHARS=1200
 GEMINI_MAX_SYSTEM_PROMPT_CHARS=3500
 GEMINI_MODEL_TIMEOUT_MS=14000
@@ -86,21 +86,25 @@ Supabase SQL Editor에서 `supabase_schema.sql` 실행
 ### 4) 로컬 실행
 
 ```bash
-npm run dev:net
+npm run dev
 ```
 
-> `dev:net`은 Vite + Netlify Function을 같이 실행하기 위해 권장됩니다. (글로벌 netlify CLI 없이 npx로 실행)
+Cloudflare Worker 로컬 확인:
+
+```bash
+npm run cf:dev
+```
 
 ---
 
 ## 설정 메모
 
-- 기본 히스토리 윈도우: `GEMINI_HISTORY_MESSAGES` (기본 6)
+- 기본 히스토리 윈도우: `GEMINI_HISTORY_MESSAGES` (기본 20)
 - 모델: 기본 `gemini-3-flash-preview` (필요 시 `GEMINI_MODEL_NAME`으로 오버라이드, 모델 fallback 없음)
 - 동일 모델 재시도: 없음(0회, 단일 시도)
 - 시스템 프롬프트 최대 길이: `GEMINI_MAX_SYSTEM_PROMPT_CHARS` (기본 3500)
 - 모델 요청 타임아웃: `GEMINI_MODEL_TIMEOUT_MS` (기본 14000ms)
-- Netlify 함수 총 실행 예산: `FUNCTION_TOTAL_TIMEOUT_MS` (기본 17000ms)
+- Worker 함수 총 실행 예산: `FUNCTION_TOTAL_TIMEOUT_MS` (기본 17000ms)
 - 함수 종료 가드: `FUNCTION_TIMEOUT_GUARD_MS` (기본 1500ms)
 - Gemini Context Cache: `GEMINI_CONTEXT_CACHE_ENABLED` (기본 true)
 - Context Cache TTL: `GEMINI_CONTEXT_CACHE_TTL_SECONDS` (기본 21600초)
@@ -129,14 +133,31 @@ npm run dev:net
 ## 주의사항 (현재 상태)
 
 - 운영 중 CORS 긴급 완화가 필요하면 `ALLOW_ALL_ORIGINS=true`로 일시 완화할 수 있습니다(기본값은 `false` 권장).
-- 대화 히스토리 기본값은 6이며, `GEMINI_HISTORY_MESSAGES`로 조정할 수 있습니다.
+- 대화 히스토리 기본값은 20이며, `GEMINI_HISTORY_MESSAGES`로 조정할 수 있습니다.
 
 ---
+
+## Cloudflare 배포
+
+```bash
+npm run cf:deploy
+```
+
+- 배포 설정: `wrangler.jsonc`
+- Worker 엔트리: `worker.js`
+- 채팅 API: `/api/chat`
+- `GOOGLE_API_KEY`는 Cloudflare secret으로 등록:
+
+```bash
+npx --yes wrangler@4.67.0 secret put GOOGLE_API_KEY
+```
 
 ## 디렉터리
 
 ```bash
-├── netlify/functions/chat.js
+├── server/chat-handler.js
+├── worker.js
+├── wrangler.jsonc
 ├── src/components/
 ├── src/lib/
 │   └── prompts/
@@ -146,6 +167,5 @@ npm run dev:net
 │       ├── kael.ts
 │       └── index.ts
 ├── supabase_schema.sql
-├── netlify.toml
 └── README.md
 ```

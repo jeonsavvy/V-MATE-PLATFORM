@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:net": "npx --yes netlify-cli dev",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "cf:dev": "npm run build && npx --yes wrangler@4.67.0 dev",
+    "cf:deploy": "npm run build && npx --yes wrangler@4.67.0 deploy",
+    "cf:typegen": "npx --yes wrangler@4.67.0 types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "dependencies": {
     "react": "^18.2.0",
