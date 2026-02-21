@@ -358,17 +358,7 @@ const normalizeAssistantPayload = (rawText) => {
     }
 
     if (!parsed) {
-        const plainResponse = normalizedText.replace(/\s+/g, ' ').trim();
-        if (!plainResponse) {
-            return safeFallback;
-        }
-
-        return {
-            emotion: 'normal',
-            inner_heart: '',
-            response: plainResponse.slice(0, 520),
-            narration: '',
-        };
+        return safeFallback;
     }
 
     const emotion = typeof parsed?.emotion === 'string' && parsed.emotion.trim()
@@ -521,6 +511,7 @@ export const handler = async (event, context) => {
         const normalizedCharacterId = String(characterId || '').trim().toLowerCase();
         const requestCachedContent = parseCachedContentName(cachedContent);
         const trimmedSystemPrompt = String(systemPrompt || '').trim();
+        const clampedSystemPrompt = trimmedSystemPrompt ? clampSystemPrompt(trimmedSystemPrompt) : '';
         const MODEL_NAME = String(process.env.GEMINI_MODEL_NAME || 'gemini-3-flash-preview').trim() || 'gemini-3-flash-preview';
 
         const canUseContextCache =
@@ -559,18 +550,6 @@ export const handler = async (event, context) => {
             parts: [{ text: clampText(userMessage) }],
         });
 
-        const contentsWithSystemPrompt = [];
-        if (trimmedSystemPrompt) {
-            contentsWithSystemPrompt.push({
-                role: 'user',
-                parts: [{ text: clampSystemPrompt(trimmedSystemPrompt) }],
-            });
-            contentsWithSystemPrompt.push({
-                role: 'model',
-                parts: [{ text: 'Understood. I will respond in the specified JSON format.' }],
-            });
-        }
-        contentsWithSystemPrompt.push(...contents);
         const getRemainingBudget = () =>
             FUNCTION_TOTAL_TIMEOUT_MS - (Date.now() - requestStartedAt);
 
@@ -589,7 +568,7 @@ export const handler = async (event, context) => {
                     apiKey,
                     modelName: MODEL_NAME,
                     characterId: normalizedCharacterId,
-                    systemPrompt: clampSystemPrompt(trimmedSystemPrompt),
+                    systemPrompt: clampedSystemPrompt,
                     cacheKey: promptCacheKey,
                 });
 
@@ -614,6 +593,7 @@ export const handler = async (event, context) => {
             outputTokens,
             useCachedContent = true,
             useJsonMimeType = true,
+            systemPromptText = '',
         }) => {
             const payload = {
                 contents: requestContents,
@@ -628,6 +608,12 @@ export const handler = async (event, context) => {
 
             if (useCachedContent && cachedContentName) {
                 payload.cachedContent = cachedContentName;
+            }
+
+            if (systemPromptText && (!useCachedContent || !cachedContentName)) {
+                payload.systemInstruction = {
+                    parts: [{ text: systemPromptText }],
+                };
             }
 
             return payload;
@@ -731,8 +717,9 @@ export const handler = async (event, context) => {
             let primaryResult = await callGeminiWithTimeout({
                 modelName: MODEL_NAME,
                 payload: buildRequestPayload({
-                    requestContents: cachedContentName ? contents : contentsWithSystemPrompt,
+                    requestContents: contents,
                     outputTokens: 320,
+                    systemPromptText: cachedContentName ? '' : clampedSystemPrompt,
                 }),
                 timeoutMs: primaryTimeoutMs,
             });
@@ -755,9 +742,10 @@ export const handler = async (event, context) => {
                     primaryResult = await callGeminiWithTimeout({
                         modelName: MODEL_NAME,
                         payload: buildRequestPayload({
-                            requestContents: contentsWithSystemPrompt,
+                            requestContents: contents,
                             outputTokens: 320,
                             useCachedContent: false,
+                            systemPromptText: clampedSystemPrompt,
                         }),
                         timeoutMs: cacheResetRetryTimeoutMs,
                     });
@@ -782,7 +770,7 @@ export const handler = async (event, context) => {
                     );
 
                     if (recoveryTimeoutMs > 0) {
-                        const minimalSystemPrompt = clampSystemPrompt(trimmedSystemPrompt).slice(
+                        const minimalSystemPrompt = clampedSystemPrompt.slice(
                             0,
                             Math.min(MAX_SYSTEM_PROMPT_CHARS, 900)
                         );
@@ -793,24 +781,13 @@ export const handler = async (event, context) => {
                             },
                         ];
 
-                        const minimalContentsWithSystemPrompt = [];
-                        if (minimalSystemPrompt) {
-                            minimalContentsWithSystemPrompt.push({
-                                role: 'user',
-                                parts: [{ text: minimalSystemPrompt }],
-                            });
-                            minimalContentsWithSystemPrompt.push({
-                                role: 'model',
-                                parts: [{ text: 'Understood. I will respond in the specified JSON format.' }],
-                            });
-                        }
-                        minimalContentsWithSystemPrompt.push(...minimalContents);
-
                         const recoveryResult = await callGeminiWithTimeout({
                             modelName: MODEL_NAME,
                             payload: buildRequestPayload({
-                                requestContents: cachedContentName ? minimalContents : minimalContentsWithSystemPrompt,
+                                requestContents: minimalContents,
                                 outputTokens: 220,
+                                useCachedContent: false,
+                                systemPromptText: minimalSystemPrompt,
                             }),
                             timeoutMs: recoveryTimeoutMs,
                         });
@@ -906,33 +883,23 @@ export const handler = async (event, context) => {
             );
 
             if (emptyRecoveryTimeoutMs > 0) {
-                const minimalSystemPrompt = clampSystemPrompt(trimmedSystemPrompt).slice(
+                const minimalSystemPrompt = clampedSystemPrompt.slice(
                     0,
                     Math.min(MAX_SYSTEM_PROMPT_CHARS, 700)
                 );
-                const emptyRecoveryContentsWithSystemPrompt = [];
-                if (minimalSystemPrompt) {
-                    emptyRecoveryContentsWithSystemPrompt.push({
-                        role: 'user',
-                        parts: [{ text: minimalSystemPrompt }],
-                    });
-                    emptyRecoveryContentsWithSystemPrompt.push({
-                        role: 'model',
-                        parts: [{ text: 'Understood. I will respond in the specified JSON format.' }],
-                    });
-                }
-                emptyRecoveryContentsWithSystemPrompt.push({
+                const emptyRecoveryContents = [{
                     role: 'user',
                     parts: [{ text: clampText(userMessage) }],
-                });
+                }];
 
                 const emptyRecoveryResult = await callGeminiWithTimeout({
                     modelName: MODEL_NAME,
                     payload: buildRequestPayload({
-                        requestContents: emptyRecoveryContentsWithSystemPrompt,
+                        requestContents: emptyRecoveryContents,
                         outputTokens: 180,
                         useCachedContent: false,
-                        useJsonMimeType: false,
+                        useJsonMimeType: true,
+                        systemPromptText: minimalSystemPrompt,
                     }),
                     timeoutMs: emptyRecoveryTimeoutMs,
                 });
