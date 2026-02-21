@@ -10,6 +10,9 @@
     "directory": "dist",
     "binding": "ASSETS"
   },
+  "placement": {
+    "region": "gcp:asia-east1"
+  },
   "vars": {
     "GEMINI_HISTORY_MESSAGES": "12",
     "GEMINI_MAX_PART_CHARS": "900",
