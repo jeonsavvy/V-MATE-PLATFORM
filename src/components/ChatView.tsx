@@ -93,7 +93,6 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
   const isLoadingHistoryRef = useRef(false)
   const messagesRef = useRef(messages)
   const chatApiUrlRef = useRef(resolveChatApiUrl())
-  const getPromptCacheKey = (charId: string) => `gemini_cached_content_${charId}`
   const resolveEmotionImage = (emotion?: AIResponse["emotion"]) => {
     if (emotion === "confused" && character.images.confused) {
       return character.images.confused
@@ -510,8 +509,6 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
       const timeoutId = setTimeout(() => controller.abort(), 17000)
 
       let response
-      const cacheStorageKey = getPromptCacheKey(character.id)
-      const cachedContent = localStorage.getItem(cacheStorageKey)
       try {
         response = await fetch(chatApiUrlRef.current, {
           method: "POST",
@@ -523,7 +520,6 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
             systemPrompt: character.system,
             userMessage: text,
             messageHistory: messageHistory.slice(1), // greeting 제외
-            cachedContent: cachedContent || undefined,
           }),
           signal: controller.signal,
         })
@@ -545,17 +541,17 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
           const errorData = await response.json()
           errorMessage = errorData.error || errorMessage
           errorCode = errorData.error_code || ""
-          if (errorMessage.includes("API key") || errorMessage.includes("GOOGLE_API_KEY")) {
+          if (errorMessage.includes("API key") || errorMessage.includes("OPENAI_API_KEY")) {
             errorMessage = "API 키가 설정되지 않았거나 만료되었습니다. 관리자에게 문의해주세요."
           } else if (
-            errorCode === "UPSTREAM_LOCATION_UNSUPPORTED" ||
-            errorMessage.includes("location is not supported")
+            errorCode === "UPSTREAM_MODEL_NOT_FOUND" ||
+            errorMessage.includes("model not found")
           ) {
-            errorMessage = "현재 서버 지역에서는 Gemini API를 사용할 수 없습니다. 관리자에게 문의해주세요."
+            errorMessage = "서버 모델 설정을 찾을 수 없습니다. 관리자에게 문의해주세요."
           } else if (
             errorCode === "UPSTREAM_CONNECTION_FAILED" ||
             errorCode === "UPSTREAM_TIMEOUT" ||
-            errorMessage.includes("Failed to connect to Gemini API") ||
+            errorMessage.includes("Failed to connect to OpenAI API") ||
             errorMessage.includes("temporarily unavailable") ||
             errorMessage.includes("overloaded")
           ) {
@@ -574,13 +570,6 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
       const data = await response.json()
       if (data.error) {
         throw new Error(data.error)
-      }
-      if (Object.prototype.hasOwnProperty.call(data, "cachedContent")) {
-        if (typeof data.cachedContent === "string" && data.cachedContent.trim()) {
-          localStorage.setItem(cacheStorageKey, data.cachedContent.trim())
-        } else if (data.cachedContent === null) {
-          localStorage.removeItem(cacheStorageKey)
-        }
       }
       if (!data.text) {
         throw new Error("서버로부터 응답을 받지 못했습니다. 다시 시도해주세요.")
@@ -663,21 +652,21 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
                 ? "응답이 지연되고 있다. 잠시 후 다시 시도해달라."
                 : "응답이 좀 느린 것 같은데... 다시 말해봐.",
         }
-      } else if (errorMsg.includes("서버 지역") || errorMsg.includes("location is not supported")) {
+      } else if (errorMsg.includes("모델 설정") || errorMsg.includes("model not found")) {
         parsed = {
           emotion: "normal",
           inner_heart:
             character.id === "mika"
-              ? "내가 있는 서버 위치에서 지금 연결이 막혀 있어..."
+              ? "앗... 서버에서 모델 설정을 아직 못 찾았나 봐..."
               : character.id === "alice"
-                ? "현재 서버 지역 정책으로 호출이 차단되는군."
-                : "지금 서버 위치 이슈로 막힘.",
+                ? "현재 서버 모델 설정이 맞지 않는 것 같군."
+                : "모델 설정이 지금 꼬여 있는 듯.",
           response:
             character.id === "mika"
-              ? "선생님, 지금 서버 지역에서는 AI 호출이 안 되는 상태래. 관리자에게 서버 지역 변경이나 모델 변경을 부탁해줘."
+              ? "선생님, 서버에서 모델 설정을 찾지 못했대. 관리자에게 모델 설정을 확인해달라고 부탁해줘."
               : character.id === "alice"
-                ? "현재 서버 지역에서는 Gemini API 호출이 제한된다. 관리자에게 배포 지역 변경 또는 모델 전환을 요청해달라."
-                : "지금 서버 지역에서 Gemini가 막혀있대. 관리자한테 배포 지역/모델 바꿔달라고 해줘.",
+                ? "현재 서버 모델 설정이 유효하지 않다. 관리자에게 모델명과 시크릿을 점검해달라고 요청해달라."
+                : "지금 서버 모델 설정이 안 맞는대. 관리자한테 모델/시크릿 확인해달라고 해줘.",
         }
       } else {
         parsed = {
