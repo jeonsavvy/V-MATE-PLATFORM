@@ -499,7 +499,7 @@ export const handler = async (event, context) => {
             };
         }
 
-        const MAX_HISTORY_MESSAGES = Number(process.env.GEMINI_HISTORY_MESSAGES || 8);
+        const MAX_HISTORY_MESSAGES = Number(process.env.GEMINI_HISTORY_MESSAGES || 10);
         const MAX_PART_CHARS = Number(process.env.GEMINI_MAX_PART_CHARS || 700);
         const MAX_SYSTEM_PROMPT_CHARS = Number(process.env.GEMINI_MAX_SYSTEM_PROMPT_CHARS || 1800);
         const MODEL_TIMEOUT_MS = Number(process.env.GEMINI_MODEL_TIMEOUT_MS || 15000);
@@ -512,7 +512,7 @@ export const handler = async (event, context) => {
         const requestCachedContent = parseCachedContentName(cachedContent);
         const trimmedSystemPrompt = String(systemPrompt || '').trim();
         const clampedSystemPrompt = trimmedSystemPrompt ? clampSystemPrompt(trimmedSystemPrompt) : '';
-        const MODEL_NAME = String(process.env.GEMINI_MODEL_NAME || 'gemini-3-flash-preview').trim() || 'gemini-3-flash-preview';
+        const MODEL_NAME = String(process.env.GEMINI_MODEL_NAME || 'gemini-2.5-flash').trim() || 'gemini-2.5-flash';
 
         const canUseContextCache =
             shouldUseGeminiContextCache() &&

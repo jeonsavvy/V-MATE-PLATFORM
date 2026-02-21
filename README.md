@@ -29,7 +29,7 @@ graph TD
   - 비로그인: LocalStorage
   - 로그인: Supabase `chat_messages` 테이블
 - **서버리스 프록시**: Gemini API Key는 Cloudflare Worker에서만 사용
-- **모델 고정**: 기본 `gemini-3-flash-preview` 단일 모델 사용 (환경 변수로 오버라이드 가능)
+- **모델 설정**: `GEMINI_MODEL_NAME` 환경 변수에서 변경 가능
 - **동일 모델 재시도 없음**: 모델 요청은 단일 시도로만 처리
 - **Gemini Context Cache 재사용**: 캐릭터별 시스템 프롬프트 캐시를 `cachedContent`로 재사용해 재요청 비용 절감
 - **JSON Mode 요청**: `responseMimeType: "application/json"`
@@ -63,13 +63,13 @@ VITE_CHAT_API_BASE_URL=
 GOOGLE_API_KEY=...
 
 # Optional
-GEMINI_HISTORY_MESSAGES=8
+GEMINI_HISTORY_MESSAGES=10
 GEMINI_MAX_PART_CHARS=700
 GEMINI_MAX_SYSTEM_PROMPT_CHARS=1800
 GEMINI_MODEL_TIMEOUT_MS=15000
 FUNCTION_TOTAL_TIMEOUT_MS=20000
 FUNCTION_TIMEOUT_GUARD_MS=1500
-GEMINI_MODEL_NAME=gemini-3-flash-preview
+GEMINI_MODEL_NAME=gemini-2.5-flash
 GEMINI_CONTEXT_CACHE_ENABLED=true
 GEMINI_CONTEXT_CACHE_TTL_SECONDS=21600
 GEMINI_CONTEXT_CACHE_CREATE_TIMEOUT_MS=1800
@@ -101,8 +101,8 @@ npm run cf:dev
 
 ## 설정 메모
 
-- 기본 히스토리 윈도우: `GEMINI_HISTORY_MESSAGES` (기본 8)
-- 모델: 기본 `gemini-3-flash-preview` (필요 시 `GEMINI_MODEL_NAME`으로 오버라이드, 모델 fallback 없음)
+- 기본 히스토리 윈도우: `GEMINI_HISTORY_MESSAGES` (기본 10)
+- 모델: `GEMINI_MODEL_NAME`에서 변경 가능 (모델 fallback 없음)
 - 모델 최대 출력 토큰: 320 (`server/chat-handler.js`의 `generationConfig.maxOutputTokens`)
 - 동일 모델 재시도: 없음(0회, 단일 시도)
 - 시스템 프롬프트 최대 길이: `GEMINI_MAX_SYSTEM_PROMPT_CHARS` (기본 1800)
@@ -146,7 +146,7 @@ npm run cf:dev
 ## 주의사항 (현재 상태)
 
 - 운영 중 CORS 긴급 완화가 필요하면 `ALLOW_ALL_ORIGINS=true`로 일시 완화할 수 있습니다(기본값은 `false` 권장).
-- 대화 히스토리 기본값은 8이며, `GEMINI_HISTORY_MESSAGES`로 조정할 수 있습니다.
+- 대화 히스토리 기본값은 10이며, `GEMINI_HISTORY_MESSAGES`로 조정할 수 있습니다.
 
 ---
 
@@ -182,7 +182,7 @@ gcloud run deploy v-mate-chat \
   --region us-central1 \
   --allow-unauthenticated \
   --set-secrets GOOGLE_API_KEY=GEMINI_API_KEY:latest \
-  --set-env-vars ALLOWED_ORIGINS=https://v-mate.jeonsavvy.workers.dev,http://localhost:5173,http://127.0.0.1:5173,ALLOW_ALL_ORIGINS=false,GEMINI_MODEL_NAME=gemini-3-flash-preview
+  --set-env-vars ALLOWED_ORIGINS=https://v-mate.jeonsavvy.workers.dev,http://localhost:5173,http://127.0.0.1:5173,ALLOW_ALL_ORIGINS=false,GEMINI_MODEL_NAME=gemini-2.5-flash
 ```
 
 3) 프론트 `.env`에 Cloud Run URL 연결 후 재배포
