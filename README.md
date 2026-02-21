@@ -65,7 +65,7 @@ GOOGLE_API_KEY=...
 # Optional
 GEMINI_HISTORY_MESSAGES=10
 GEMINI_MAX_PART_CHARS=700
-GEMINI_MAX_SYSTEM_PROMPT_CHARS=1800
+GEMINI_MAX_SYSTEM_PROMPT_CHARS=5000
 GEMINI_MODEL_TIMEOUT_MS=15000
 FUNCTION_TOTAL_TIMEOUT_MS=20000
 FUNCTION_TIMEOUT_GUARD_MS=1500
@@ -105,7 +105,7 @@ npm run cf:dev
 - 모델: `GEMINI_MODEL_NAME`에서 변경 가능 (모델 fallback 없음)
 - 모델 최대 출력 토큰: 320 (`server/chat-handler.js`의 `generationConfig.maxOutputTokens`)
 - 동일 모델 재시도: 없음(0회, 단일 시도)
-- 시스템 프롬프트 최대 길이: `GEMINI_MAX_SYSTEM_PROMPT_CHARS` (기본 1800)
+- 시스템 프롬프트 최대 길이: `GEMINI_MAX_SYSTEM_PROMPT_CHARS` (기본 5000)
 - 요청 파트 최대 길이: `GEMINI_MAX_PART_CHARS` (기본 700)
 - 모델 요청 타임아웃: `GEMINI_MODEL_TIMEOUT_MS` (기본 15000ms)
 - Worker 함수 총 실행 예산: `FUNCTION_TOTAL_TIMEOUT_MS` (기본 20000ms)
