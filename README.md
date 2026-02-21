@@ -29,7 +29,7 @@ graph TD
   - 비로그인: LocalStorage
   - 로그인: Supabase `chat_messages` 테이블
 - **서버리스 프록시**: Gemini API Key는 Cloudflare Worker에서만 사용
-- **모델 고정**: `gemini-2.5-flash-lite` 사용 (서버 코드 고정)
+- **모델 고정**: `gemini-3-flash-preview` 사용 (서버 코드 고정)
 - **동일 모델 재시도 없음**: 모델 요청은 단일 시도로만 처리
 - **Gemini Context Cache 재사용**: 캐릭터별 시스템 프롬프트 캐시를 `cachedContent`로 재사용해 재요청 비용 절감
 - **JSON Mode 요청**: `responseMimeType: "application/json"`
@@ -101,7 +101,7 @@ npm run cf:dev
 ## 설정 메모
 
 - 기본 히스토리 윈도우: `GEMINI_HISTORY_MESSAGES` (기본 10)
-- 모델: `gemini-2.5-flash-lite` 고정 (모델 fallback 없음)
+- 모델: `gemini-3-flash-preview` 고정 (모델 fallback 없음)
 - 모델 최대 출력 토큰: 320 (`server/chat-handler.js`의 `generationConfig.maxOutputTokens`)
 - 동일 모델 재시도: 없음(0회, 단일 시도)
 - 시스템 프롬프트 최대 길이: `GEMINI_MAX_SYSTEM_PROMPT_CHARS` (기본 5000)

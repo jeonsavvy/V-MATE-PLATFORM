@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto';
 const rateLimitStore = new Map();
 const promptCacheStore = new Map();
 const SUPPORTED_CHARACTER_IDS = new Set(['mika', 'alice', 'kael']);
-const FIXED_GEMINI_MODEL_NAME = 'gemini-2.5-flash-lite';
+const FIXED_GEMINI_MODEL_NAME = 'gemini-3-flash-preview';
 
 const shouldUseGeminiContextCache = () =>
     String(process.env.GEMINI_CONTEXT_CACHE_ENABLED || 'true').toLowerCase() !== 'false';
