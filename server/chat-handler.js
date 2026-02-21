@@ -308,6 +308,25 @@ const normalizeAssistantPayload = (rawText) => {
     };
 };
 
+const extractGeminiResponseText = (geminiData) => {
+    const candidates = Array.isArray(geminiData?.candidates) ? geminiData.candidates : [];
+
+    for (const candidate of candidates) {
+        const parts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [];
+        const text = parts
+            .map((part) => (typeof part?.text === 'string' ? part.text : ''))
+            .filter(Boolean)
+            .join('\n')
+            .trim();
+
+        if (text) {
+            return text;
+        }
+    }
+
+    return null;
+};
+
 export const handler = async (event, context) => {
     const requestStartedAt = Date.now();
     const origin = event.headers?.origin || event.headers?.Origin;
@@ -774,15 +793,27 @@ export const handler = async (event, context) => {
             };
         }
 
-        if (!geminiData.candidates || !geminiData.candidates[0] || !geminiData.candidates[0].content?.parts?.[0]?.text) {
+        const modelText = extractGeminiResponseText(geminiData);
+        if (!modelText) {
+            console.warn('[V-MATE] Empty Gemini response text', {
+                finishReason: geminiData?.candidates?.[0]?.finishReason || null,
+                promptBlockReason: geminiData?.promptFeedback?.blockReason || null,
+            });
+
+            const fallbackPayload = buildUpstreamFallbackPayload(normalizedCharacterId);
             return {
-                statusCode: 502,
+                statusCode: 200,
                 headers: withElapsedHeader(headers, requestStartedAt),
-                body: JSON.stringify({ error: 'Invalid response format from Gemini API.' }),
+                body: JSON.stringify({
+                    text: JSON.stringify(fallbackPayload),
+                    cachedContent: cachedContentName || null,
+                    error_code: 'UPSTREAM_EMPTY_RESPONSE',
+                    elapsed_ms: Math.max(0, Date.now() - requestStartedAt),
+                }),
             };
         }
 
-        const normalizedPayload = normalizeAssistantPayload(geminiData.candidates[0].content.parts[0].text);
+        const normalizedPayload = normalizeAssistantPayload(modelText);
         const responseCachedContent = cachedContentName || null;
 
         if (canUseContextCache && promptCacheKey && responseCachedContent) {
