@@ -22,6 +22,15 @@ const getGeminiContextCacheConfig = () => ({
     autoCreateEnabled: String(process.env.GEMINI_CONTEXT_CACHE_AUTO_CREATE || 'false').toLowerCase() !== 'false',
 });
 
+const getGeminiRetryConfig = () => ({
+    cacheLookupRetryEnabled:
+        String(process.env.GEMINI_CACHE_LOOKUP_RETRY_ENABLED || 'true').toLowerCase() !== 'false',
+    networkRecoveryRetryEnabled:
+        String(process.env.GEMINI_NETWORK_RECOVERY_RETRY_ENABLED || 'false').toLowerCase() === 'true',
+    emptyResponseRetryEnabled:
+        String(process.env.GEMINI_EMPTY_RESPONSE_RETRY_ENABLED || 'false').toLowerCase() === 'true',
+});
+
 const toStablePromptHash = (prompt) =>
     createHash('sha256')
         .update(String(prompt || ''))
@@ -298,6 +307,40 @@ const tryParseJsonObject = (text) => {
     }
 };
 
+const toSafeLogPreview = (value, maxChars = 160) => {
+    const text = String(value || '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    if (!text) {
+        return '';
+    }
+
+    return text.length > maxChars ? `${text.slice(0, maxChars)}…` : text;
+};
+
+const looksLikeBrokenContractJson = (text) => {
+    const normalized = String(text || '').trim();
+    if (!normalized) {
+        return false;
+    }
+
+    const mentionsContractKey = /["']?(emotion|inner_heart|response|narration)["']?\s*:?/i.test(normalized);
+    const startsJsonLike = normalized.startsWith('{') || normalized.startsWith('[');
+
+    if (!mentionsContractKey || !startsJsonLike) {
+        return false;
+    }
+
+    const openCurly = (normalized.match(/{/g) || []).length;
+    const closeCurly = (normalized.match(/}/g) || []).length;
+    const openSquare = (normalized.match(/\[/g) || []).length;
+    const closeSquare = (normalized.match(/]/g) || []).length;
+    const hasUnbalancedBrackets = openCurly !== closeCurly || openSquare !== closeSquare;
+
+    return hasUnbalancedBrackets || normalized.length < 40;
+};
+
 const tryParseLooseJsonObject = (text) => {
     if (!text || typeof text !== 'string') {
         return null;
@@ -387,13 +430,14 @@ const extractJsonObjectCandidates = (text) => {
     return candidates;
 };
 
-const normalizeAssistantPayload = (rawText) => {
+const normalizeAssistantPayload = (rawText, logContext = null) => {
     const safeFallback = {
         emotion: 'normal',
         inner_heart: '',
         response: '잠시 응답 형식이 불안정했어요. 한 번만 다시 말해줘.',
         narration: '',
     };
+    const safeLogContext = logContext && typeof logContext === 'object' ? logContext : {};
 
     if (!rawText || typeof rawText !== 'string') {
         return safeFallback;
@@ -402,18 +446,44 @@ const normalizeAssistantPayload = (rawText) => {
     const normalizedText = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
 
     let parsed = tryParseJsonObject(normalizedText);
+    let parseMode = parsed ? 'strict-full' : null;
+
+    if (!parsed) {
+        parsed = tryParseLooseJsonObject(normalizedText);
+        if (parsed) {
+            parseMode = 'loose-full';
+        }
+    }
+
     if (!parsed) {
         const candidates = extractJsonObjectCandidates(normalizedText);
         for (const candidate of candidates) {
-            const maybeParsed = tryParseJsonObject(candidate) || tryParseLooseJsonObject(candidate);
-            if (maybeParsed) {
-                parsed = maybeParsed;
+            const strictCandidate = tryParseJsonObject(candidate);
+            if (strictCandidate) {
+                parsed = strictCandidate;
+                parseMode = 'strict-candidate';
+                break;
+            }
+
+            const looseCandidate = tryParseLooseJsonObject(candidate);
+            if (looseCandidate) {
+                parsed = looseCandidate;
+                parseMode = 'loose-candidate';
                 break;
             }
         }
     }
 
     if (!parsed) {
+        if (looksLikeBrokenContractJson(normalizedText)) {
+            console.warn('[V-MATE] JSON normalization fallback (broken contract JSON)', {
+                ...safeLogContext,
+                rawTextLength: normalizedText.length,
+                rawTextPreview: toSafeLogPreview(normalizedText),
+            });
+            return safeFallback;
+        }
+
         const plainResponse = normalizedText
             .replace(/^here is (the )?json requested:?/i, '')
             .replace(/^json:?/i, '')
@@ -421,8 +491,18 @@ const normalizeAssistantPayload = (rawText) => {
             .trim();
 
         if (!plainResponse) {
+            console.warn('[V-MATE] JSON normalization fallback (empty text)', {
+                ...safeLogContext,
+                rawTextLength: normalizedText.length,
+            });
             return safeFallback;
         }
+
+        console.warn('[V-MATE] JSON normalization fallback (plain text passthrough)', {
+            ...safeLogContext,
+            rawTextLength: normalizedText.length,
+            rawTextPreview: toSafeLogPreview(normalizedText),
+        });
 
         return {
             emotion: 'normal',
@@ -432,8 +512,17 @@ const normalizeAssistantPayload = (rawText) => {
         };
     }
 
+    if (parseMode && parseMode !== 'strict-full') {
+        console.warn('[V-MATE] JSON normalization used recovery parser', {
+            ...safeLogContext,
+            parseMode,
+            rawTextLength: normalizedText.length,
+            rawTextPreview: toSafeLogPreview(normalizedText),
+        });
+    }
+
     const emotion = typeof parsed?.emotion === 'string' && parsed.emotion.trim()
-        ? parsed.emotion.trim()
+        ? parsed.emotion.trim().toLowerCase()
         : 'normal';
 
     const innerHeart = typeof parsed?.inner_heart === 'string'
@@ -447,6 +536,21 @@ const normalizeAssistantPayload = (rawText) => {
     const narration = typeof parsed?.narration === 'string'
         ? parsed.narration.trim()
         : '';
+
+    if (!ALLOWED_EMOTIONS.has(emotion)) {
+        console.warn('[V-MATE] Invalid emotion value normalized to default', {
+            ...safeLogContext,
+            emotion,
+        });
+    }
+
+    if (response === safeFallback.response && typeof parsed?.response !== 'string') {
+        console.warn('[V-MATE] Parsed JSON missing string response field', {
+            ...safeLogContext,
+            parseMode,
+            rawTextPreview: toSafeLogPreview(normalizedText),
+        });
+    }
 
     return {
         emotion: ALLOWED_EMOTIONS.has(emotion) ? emotion : 'normal',
@@ -477,9 +581,13 @@ const extractGeminiResponseText = (geminiData) => {
 
 export const handler = async (event, context) => {
     const requestStartedAt = Date.now();
+    const requestTraceId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const origin = event.headers?.origin || event.headers?.Origin;
     const originAllowed = isOriginAllowed(origin);
-    const headers = buildHeaders(originAllowed, origin);
+    const headers = {
+        ...buildHeaders(originAllowed, origin),
+        'X-V-MATE-Trace-Id': requestTraceId,
+    };
 
     // OPTIONS 요청 처리 (CORS preflight)
     if (event.httpMethod === 'OPTIONS') {
@@ -584,6 +692,15 @@ export const handler = async (event, context) => {
         const trimmedSystemPrompt = String(systemPrompt || '').trim();
         const clampedSystemPrompt = trimmedSystemPrompt ? clampSystemPrompt(trimmedSystemPrompt) : '';
         const MODEL_NAME = FIXED_GEMINI_MODEL_NAME;
+        const {
+            cacheLookupRetryEnabled,
+            networkRecoveryRetryEnabled,
+            emptyResponseRetryEnabled,
+        } = getGeminiRetryConfig();
+        const logMeta = {
+            traceId: requestTraceId,
+            characterId: normalizedCharacterId || null,
+        };
 
         const canUseContextCache =
             shouldUseGeminiContextCache() &&
@@ -800,8 +917,16 @@ export const handler = async (event, context) => {
                 !primaryResult.ok &&
                 primaryResult.error?.code === 'UPSTREAM_MODEL_ERROR' &&
                 cachedContentName &&
+                cacheLookupRetryEnabled &&
                 isCacheLookupErrorMessage(primaryResult.error?.message)
             ) {
+                console.warn('[V-MATE] Cached content lookup failed, retrying without cache', {
+                    ...logMeta,
+                    errorCode: primaryResult.error?.code || null,
+                    errorStatus: primaryResult.error?.status || null,
+                    errorMessage: primaryResult.error?.message || null,
+                    hadCachedContent: Boolean(cachedContentName),
+                });
                 removePromptCache(promptCacheKey);
                 cachedContentName = null;
 
@@ -830,10 +955,21 @@ export const handler = async (event, context) => {
                 lastModelError = null;
             } else {
                 lastModelError = primaryResult.error;
+                console.warn('[V-MATE] Primary Gemini call failed', {
+                    ...logMeta,
+                    errorCode: lastModelError?.code || null,
+                    errorStatus: lastModelError?.status || null,
+                    errorMessage: lastModelError?.message || null,
+                    hadCachedContent: Boolean(cachedContentName),
+                    networkRecoveryRetryEnabled,
+                });
 
                 const shouldRunRecoveryAttempt =
-                    lastModelError?.code === 'UPSTREAM_TIMEOUT' ||
-                    lastModelError?.code === 'UPSTREAM_CONNECTION_FAILED';
+                    networkRecoveryRetryEnabled &&
+                    (
+                        lastModelError?.code === 'UPSTREAM_TIMEOUT' ||
+                        lastModelError?.code === 'UPSTREAM_CONNECTION_FAILED'
+                    );
 
                 if (shouldRunRecoveryAttempt) {
                     const recoveryTimeoutMs = Math.min(
@@ -868,10 +1004,30 @@ export const handler = async (event, context) => {
                             geminiResponse = recoveryResult.response;
                             geminiData = recoveryResult.data;
                             lastModelError = null;
+                            console.warn('[V-MATE] Gemini recovery attempt succeeded', {
+                                ...logMeta,
+                                recoveryTimeoutMs,
+                            });
                         } else {
                             lastModelError = recoveryResult.error;
+                            console.warn('[V-MATE] Gemini recovery attempt failed', {
+                                ...logMeta,
+                                errorCode: lastModelError?.code || null,
+                                errorStatus: lastModelError?.status || null,
+                                errorMessage: lastModelError?.message || null,
+                                recoveryTimeoutMs,
+                            });
                         }
                     }
+                } else if (
+                    !networkRecoveryRetryEnabled &&
+                    (lastModelError?.code === 'UPSTREAM_TIMEOUT' ||
+                        lastModelError?.code === 'UPSTREAM_CONNECTION_FAILED')
+                ) {
+                    console.warn('[V-MATE] Network recovery retry skipped by config', {
+                        ...logMeta,
+                        errorCode: lastModelError?.code || null,
+                    });
                 }
             }
         }
@@ -885,6 +1041,11 @@ export const handler = async (event, context) => {
 
             if (shouldUseFallbackPayload) {
                 const fallbackPayload = buildUpstreamFallbackPayload(normalizedCharacterId);
+                console.warn('[V-MATE] Returning upstream fallback payload', {
+                    ...logMeta,
+                    upstreamErrorCode,
+                    elapsedMs: Math.max(0, Date.now() - requestStartedAt),
+                });
                 return {
                     statusCode: 200,
                     headers: withElapsedHeader(headers, requestStartedAt),
@@ -940,8 +1101,10 @@ export const handler = async (event, context) => {
         let modelText = extractGeminiResponseText(geminiData);
         if (!modelText) {
             console.warn('[V-MATE] Empty Gemini response text', {
+                ...logMeta,
                 finishReason: geminiData?.candidates?.[0]?.finishReason || null,
                 promptBlockReason: geminiData?.promptFeedback?.blockReason || null,
+                emptyResponseRetryEnabled,
             });
 
             if (cachedContentName) {
@@ -954,7 +1117,7 @@ export const handler = async (event, context) => {
                 Math.max(0, getRemainingBudget() - FUNCTION_TIMEOUT_GUARD_MS)
             );
 
-            if (emptyRecoveryTimeoutMs > 0) {
+            if (emptyResponseRetryEnabled && emptyRecoveryTimeoutMs > 0) {
                 const minimalSystemPrompt = clampedSystemPrompt.slice(
                     0,
                     Math.min(MAX_SYSTEM_PROMPT_CHARS, 700)
@@ -982,18 +1145,33 @@ export const handler = async (event, context) => {
                         geminiResponse = emptyRecoveryResult.response;
                         geminiData = emptyRecoveryResult.data;
                         modelText = recoveredText;
+                        console.warn('[V-MATE] Empty-response recovery attempt succeeded', {
+                            ...logMeta,
+                            emptyRecoveryTimeoutMs,
+                        });
                     } else {
                         console.warn('[V-MATE] Empty recovery response text after retry', {
+                            ...logMeta,
                             finishReason: emptyRecoveryResult.data?.candidates?.[0]?.finishReason || null,
                             promptBlockReason: emptyRecoveryResult.data?.promptFeedback?.blockReason || null,
                         });
                     }
                 }
+            } else if (!emptyResponseRetryEnabled) {
+                console.warn('[V-MATE] Empty-response recovery retry skipped by config', {
+                    ...logMeta,
+                });
             }
         }
 
         if (!modelText) {
             const fallbackPayload = buildUpstreamFallbackPayload(normalizedCharacterId);
+            console.warn('[V-MATE] Returning fallback payload for empty model text', {
+                ...logMeta,
+                errorCode: 'UPSTREAM_EMPTY_RESPONSE',
+                finishReason: geminiData?.candidates?.[0]?.finishReason || null,
+                promptBlockReason: geminiData?.promptFeedback?.blockReason || null,
+            });
             return {
                 statusCode: 200,
                 headers: withElapsedHeader(headers, requestStartedAt),
@@ -1006,13 +1184,23 @@ export const handler = async (event, context) => {
             };
         }
 
-        const normalizedPayload = normalizeAssistantPayload(modelText);
+        const normalizedPayload = normalizeAssistantPayload(modelText, {
+            ...logMeta,
+            finishReason: geminiData?.candidates?.[0]?.finishReason || null,
+            promptBlockReason: geminiData?.promptFeedback?.blockReason || null,
+        });
         const isFormatFallback =
             normalizedPayload.response === '잠시 응답 형식이 불안정했어요. 한 번만 다시 말해줘.' &&
             normalizedPayload.inner_heart === '';
         const finalPayload = isFormatFallback
             ? buildUpstreamFallbackPayload(normalizedCharacterId)
             : normalizedPayload;
+        if (isFormatFallback) {
+            console.warn('[V-MATE] Replacing format fallback with character fallback payload', {
+                ...logMeta,
+                rawModelTextPreview: toSafeLogPreview(modelText),
+            });
+        }
         const responseCachedContent = cachedContentName || null;
 
         if (canUseContextCache && promptCacheKey && responseCachedContent) {
