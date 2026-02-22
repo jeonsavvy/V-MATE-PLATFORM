@@ -89,6 +89,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
   const [inputValue, setInputValue] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [historyPreviews, setHistoryPreviews] = useState<Record<string, HistoryPreview>>({})
+  const [showEmotionIllustrations, setShowEmotionIllustrations] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
   const isLoadingHistoryRef = useRef(false)
   const messagesRef = useRef(messages)
@@ -864,7 +865,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
         </aside>
 
         <div className="flex h-full min-w-0 flex-col">
-          <header className="flex items-center justify-between border-b border-white/45 bg-[#efe8dc]/78 p-3 shadow-[0_16px_26px_-24px_rgba(23,22,19,0.8)] backdrop-blur-xl lg:p-5">
+          <header className="flex items-center justify-between border-b border-white/55 bg-[#efe8dc]/88 p-3 shadow-[0_16px_26px_-24px_rgba(23,22,19,0.8)] backdrop-blur-xl lg:p-5">
             <div className="flex min-w-0 items-center gap-3">
               <Button
                 variant="ghost"
@@ -882,6 +883,20 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
             </div>
 
             <div className="flex items-center gap-2 sm:gap-3">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setShowEmotionIllustrations((prev) => !prev)}
+                className={cn(
+                  "h-9 rounded-xl px-3 text-xs font-semibold",
+                  showEmotionIllustrations
+                    ? "text-[#5b5668] hover:bg-[#7d6aa8]/10"
+                    : "text-[#7a756d] hover:bg-black/5"
+                )}
+                title={showEmotionIllustrations ? "감정 일러스트 숨기기" : "감정 일러스트 보기"}
+              >
+                {showEmotionIllustrations ? "일러스트 ON" : "일러스트 OFF"}
+              </Button>
               <Button
                 variant="ghost"
                 onClick={handleClearChat}
@@ -902,11 +917,12 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
             </div>
           </header>
 
-          <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-5 scroll-smooth lg:px-8 lg:py-7">
-            <div className="mx-auto w-full max-w-4xl space-y-6">
-              <p className="text-center text-xs text-[#8f887d]">이 대화는 AI로 생성된 가상의 이야기입니다</p>
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-4 scroll-smooth sm:px-4 lg:px-6 lg:py-6">
+            <div className="mx-auto w-full max-w-[920px] rounded-3xl border border-white/45 bg-white/30 p-3 shadow-[0_18px_40px_-34px_rgba(23,22,19,0.7)] backdrop-blur-[2px] sm:p-4">
+              <div className="space-y-5">
+                <p className="text-center text-xs font-medium text-[#746d63]">이 대화는 AI로 생성된 가상의 이야기입니다</p>
 
-              {messages.map((msg, index) => {
+                {messages.map((msg, index) => {
                 const isUser = msg.role === "user"
                 const assistantPayload = typeof msg.content === "string" ? null : msg.content
                 const content = typeof msg.content === "string" ? msg.content : msg.content.response
@@ -916,6 +932,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
                 const previousEmotion = !isUser ? findPreviousAssistantEmotion(index) : null
                 const showIllustrationCard = Boolean(
                   !isUser &&
+                  showEmotionIllustrations &&
                   emotion &&
                   previousEmotion &&
                   emotion !== previousEmotion
@@ -932,7 +949,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
                   >
                     <div
                       className={cn(
-                        "flex max-w-[92%] gap-3 md:max-w-[70%]",
+                        "flex max-w-[94%] gap-3 md:max-w-[78%]",
                         isUser ? "flex-row-reverse" : "flex-row"
                       )}
                     >
@@ -947,35 +964,35 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
 
                       <div className="min-w-0 flex-1">
                         {showIllustrationCard && emotion && (
-                          <div className="mb-3 overflow-hidden rounded-2xl border border-white/55 bg-white/75 shadow-[0_18px_32px_-24px_rgba(24,23,20,0.72)]">
+                          <div className="mb-3 max-w-[380px] overflow-hidden rounded-2xl border border-white/65 bg-white/90 shadow-[0_18px_32px_-24px_rgba(24,23,20,0.72)]">
                             <img
                               src={messageImage}
                               alt={`${character.name} ${emotion}`}
-                              className="h-auto w-full object-cover object-top"
+                              className="h-44 w-full object-cover object-top sm:h-56"
                               loading="lazy"
                             />
-                            <div className="border-t border-black/5 bg-[#f6f1e9] px-3 py-2 text-[11px] font-semibold text-[#6f685d]">
+                            <div className="border-t border-black/5 bg-[#f6f1e9] px-3 py-2 text-[11px] font-semibold text-[#5f584d]">
                               {character.name} · {EMOTION_LABELS[emotion]}
                             </div>
                           </div>
                         )}
 
                         {!isUser && narration && (
-                          <div className="mb-3 rounded-xl border border-[#ddd3c5] bg-[#efe8dc]/88 p-3 text-xs leading-relaxed text-[#5f584d]">
+                          <div className="mb-3 rounded-xl border border-[#d5cab8] bg-[#f3ecdf]/95 p-3 text-xs leading-relaxed text-[#4f493f] shadow-[0_8px_18px_-16px_rgba(0,0,0,0.45)]">
                             {narration}
                           </div>
                         )}
 
                         <div
                           className={cn(
-                            "rounded-2xl p-4 text-sm leading-relaxed shadow-[0_16px_28px_-22px_rgba(34,35,43,0.45)]",
+                            "rounded-2xl p-4 text-[14px] leading-7 shadow-[0_16px_28px_-22px_rgba(34,35,43,0.45)] sm:text-[15px]",
                             isUser
-                              ? "rounded-br-sm bg-gradient-to-br from-[#3b3d45] to-[#2f3138] text-[#f8f7f4]"
-                              : "rounded-bl-sm border border-white/50 bg-[#f8f4ee]/84 text-[#2a2d35] backdrop-blur-md"
+                              ? "rounded-br-sm border border-[#2d3038] bg-gradient-to-br from-[#3d4049] to-[#2c2f38] text-[#fbfaf7]"
+                              : "rounded-bl-sm border border-[#ddd3c7] bg-[#fbf8f2]/96 text-[#1f222a]"
                           )}
                         >
                           {!isUser && innerHeart && (
-                            <div className="mb-3 rounded-xl border border-[#dfd1df] bg-[#f9f0f7]/90 p-3 text-xs font-semibold text-[#775a74]">
+                            <div className="mb-3 rounded-xl border border-[#d8c7d8] bg-[#f7eef6]/96 p-3 text-xs font-semibold leading-relaxed text-[#6c5169]">
                               💭 {innerHeart}
                             </div>
                           )}
@@ -985,19 +1002,20 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
                     </div>
                   </div>
                 )
-              })}
+                })}
 
-              {isLoading && (
-                <div className="fade-in flex justify-start">
-                  <div className="rounded-2xl rounded-bl-sm border border-white/45 bg-[#f8f4ee]/78 px-5 py-3 text-xs text-[#7b766d]">
-                    <span className="inline-flex items-center gap-1">
-                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8] [animation-delay:-0.2s]" />
-                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8] [animation-delay:-0.1s]" />
-                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8]" />
-                    </span>
+                {isLoading && (
+                  <div className="fade-in flex justify-start">
+                    <div className="rounded-2xl rounded-bl-sm border border-[#ddd3c7] bg-[#fbf8f2]/96 px-5 py-3 text-xs font-medium text-[#6a645a] shadow-[0_12px_22px_-20px_rgba(0,0,0,0.65)]">
+                      <span className="inline-flex items-center gap-1">
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8] [animation-delay:-0.2s]" />
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8] [animation-delay:-0.1s]" />
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8]" />
+                      </span>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
 
