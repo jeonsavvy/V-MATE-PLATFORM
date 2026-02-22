@@ -681,6 +681,7 @@ export const handler = async (event, context) => {
         const MAX_HISTORY_MESSAGES = Number(process.env.GEMINI_HISTORY_MESSAGES || 10);
         const MAX_PART_CHARS = Number(process.env.GEMINI_MAX_PART_CHARS || 700);
         const MAX_SYSTEM_PROMPT_CHARS = Number(process.env.GEMINI_MAX_SYSTEM_PROMPT_CHARS || 5000);
+        const PRIMARY_MAX_OUTPUT_TOKENS = Number(process.env.GEMINI_MAX_OUTPUT_TOKENS || 512);
         const MODEL_TIMEOUT_MS = Number(process.env.GEMINI_MODEL_TIMEOUT_MS || 15000);
         const FUNCTION_TOTAL_TIMEOUT_MS = Number(process.env.FUNCTION_TOTAL_TIMEOUT_MS || 20000);
         const FUNCTION_TIMEOUT_GUARD_MS = Number(process.env.FUNCTION_TIMEOUT_GUARD_MS || 1500);
@@ -907,7 +908,7 @@ export const handler = async (event, context) => {
                 modelName: MODEL_NAME,
                 payload: buildRequestPayload({
                     requestContents: contents,
-                    outputTokens: 320,
+                    outputTokens: PRIMARY_MAX_OUTPUT_TOKENS,
                     systemPromptText: cachedContentName ? '' : clampedSystemPrompt,
                 }),
                 timeoutMs: primaryTimeoutMs,
@@ -940,7 +941,7 @@ export const handler = async (event, context) => {
                         modelName: MODEL_NAME,
                         payload: buildRequestPayload({
                             requestContents: contents,
-                            outputTokens: 320,
+                            outputTokens: PRIMARY_MAX_OUTPUT_TOKENS,
                             useCachedContent: false,
                             systemPromptText: clampedSystemPrompt,
                         }),
@@ -1166,10 +1167,15 @@ export const handler = async (event, context) => {
 
         if (!modelText) {
             const fallbackPayload = buildUpstreamFallbackPayload(normalizedCharacterId);
+            const finishReason = geminiData?.candidates?.[0]?.finishReason || null;
+            const emptyResponseErrorCode =
+                finishReason === 'MAX_TOKENS'
+                    ? 'UPSTREAM_EMPTY_RESPONSE_MAX_TOKENS'
+                    : 'UPSTREAM_EMPTY_RESPONSE';
             console.warn('[V-MATE] Returning fallback payload for empty model text', {
                 ...logMeta,
-                errorCode: 'UPSTREAM_EMPTY_RESPONSE',
-                finishReason: geminiData?.candidates?.[0]?.finishReason || null,
+                errorCode: emptyResponseErrorCode,
+                finishReason,
                 promptBlockReason: geminiData?.promptFeedback?.blockReason || null,
             });
             return {
@@ -1178,7 +1184,7 @@ export const handler = async (event, context) => {
                 body: JSON.stringify({
                     text: JSON.stringify(fallbackPayload),
                     cachedContent: cachedContentName || null,
-                    error_code: 'UPSTREAM_EMPTY_RESPONSE',
+                    error_code: emptyResponseErrorCode,
                     elapsed_ms: Math.max(0, Date.now() - requestStartedAt),
                 }),
             };
