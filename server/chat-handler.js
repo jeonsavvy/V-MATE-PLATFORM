@@ -31,6 +31,12 @@ const getGeminiRetryConfig = () => ({
         String(process.env.GEMINI_EMPTY_RESPONSE_RETRY_ENABLED || 'false').toLowerCase() === 'true',
 });
 
+const getGeminiThinkingLevel = () => {
+    const raw = String(process.env.GEMINI_THINKING_LEVEL || 'minimal').trim().toLowerCase();
+    const allowed = new Set(['minimal', 'low', 'medium', 'high']);
+    return allowed.has(raw) ? raw : 'minimal';
+};
+
 const toStablePromptHash = (prompt) =>
     createHash('sha256')
         .update(String(prompt || ''))
@@ -693,6 +699,7 @@ export const handler = async (event, context) => {
         const trimmedSystemPrompt = String(systemPrompt || '').trim();
         const clampedSystemPrompt = trimmedSystemPrompt ? clampSystemPrompt(trimmedSystemPrompt) : '';
         const MODEL_NAME = FIXED_GEMINI_MODEL_NAME;
+        const GEMINI_THINKING_LEVEL = getGeminiThinkingLevel();
         const {
             cacheLookupRetryEnabled,
             networkRecoveryRetryEnabled,
@@ -788,6 +795,9 @@ export const handler = async (event, context) => {
                 contents: requestContents,
                 generationConfig: {
                     maxOutputTokens: outputTokens,
+                    thinkingConfig: {
+                        thinkingLevel: GEMINI_THINKING_LEVEL,
+                    },
                 },
             };
 
