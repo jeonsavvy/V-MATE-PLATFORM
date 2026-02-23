@@ -1,5 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 
+const runtimeEnv = (globalThis as { __V_MATE_RUNTIME_ENV__?: Record<string, string | undefined> })
+  .__V_MATE_RUNTIME_ENV__ ?? {}
+
 const resolveEnvValue = (...candidates: Array<string | undefined>) => {
   for (const candidate of candidates) {
     const normalized = String(candidate || '').trim()
@@ -11,11 +14,17 @@ const resolveEnvValue = (...candidates: Array<string | undefined>) => {
 }
 
 const supabaseUrl = resolveEnvValue(
+  runtimeEnv.VITE_SUPABASE_URL,
+  runtimeEnv.VITE_PUBLIC_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_PUBLIC_SUPABASE_URL,
 )
 
 const supabaseAnonKey = resolveEnvValue(
+  runtimeEnv.VITE_SUPABASE_ANON_KEY,
+  runtimeEnv.VITE_SUPABASE_PUBLISHABLE_KEY,
+  runtimeEnv.VITE_PUBLIC_SUPABASE_ANON_KEY,
+  runtimeEnv.VITE_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
   import.meta.env.VITE_SUPABASE_ANON_KEY,
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
   import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY,

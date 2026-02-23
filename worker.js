@@ -1,6 +1,15 @@
 import { handler as chatHandler } from "./server/chat-handler.js";
 
 const CHAT_API_PATH = "/api/chat";
+const CLIENT_RUNTIME_ENV_KEYS = [
+  "VITE_SUPABASE_URL",
+  "VITE_SUPABASE_ANON_KEY",
+  "VITE_SUPABASE_PUBLISHABLE_KEY",
+  "VITE_PUBLIC_SUPABASE_URL",
+  "VITE_PUBLIC_SUPABASE_ANON_KEY",
+  "VITE_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
+  "VITE_CHAT_API_BASE_URL",
+];
 
 const isChatApiRequest = (pathname) =>
   pathname === CHAT_API_PATH || pathname === `${CHAT_API_PATH}/`;
@@ -50,16 +59,56 @@ const isHtmlRequest = (request) => {
   return accept.includes("text/html");
 };
 
+const buildClientRuntimeEnv = (env) => {
+  const runtimeEnv = {};
+
+  for (const key of CLIENT_RUNTIME_ENV_KEYS) {
+    const value = env?.[key];
+    if (typeof value === "string" && value.trim()) {
+      runtimeEnv[key] = value;
+    }
+  }
+
+  return runtimeEnv;
+};
+
+const injectRuntimeEnvIntoHtml = async (response, env) => {
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("text/html")) {
+    return response;
+  }
+
+  const html = await response.text();
+  const runtimeEnv = buildClientRuntimeEnv(env);
+  const serializedRuntimeEnv = JSON.stringify(runtimeEnv).replace(/</g, "\\u003c");
+  const runtimeScript = `<script id="v-mate-runtime-env">window.__V_MATE_RUNTIME_ENV__=${serializedRuntimeEnv};</script>`;
+
+  const body = html.includes("</head>")
+    ? html.replace("</head>", `${runtimeScript}</head>`)
+    : `${runtimeScript}${html}`;
+
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+  headers.delete("etag");
+
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+};
+
 const serveStaticAsset = async (request, env) => {
-  const assetResponse = await env.ASSETS.fetch(request);
-  if (assetResponse.status !== 404) {
-    return assetResponse;
+  let assetResponse = await env.ASSETS.fetch(request);
+
+  if (assetResponse.status === 404 && isHtmlRequest(request)) {
+    const url = new URL(request.url);
+    url.pathname = "/index.html";
+    assetResponse = await env.ASSETS.fetch(new Request(url.toString(), request));
   }
 
   if (isHtmlRequest(request)) {
-    const url = new URL(request.url);
-    url.pathname = "/index.html";
-    return env.ASSETS.fetch(new Request(url.toString(), request));
+    return injectRuntimeEnvIntoHtml(assetResponse, env);
   }
 
   return assetResponse;
