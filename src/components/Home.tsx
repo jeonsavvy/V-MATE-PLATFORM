@@ -166,6 +166,7 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
   })
 
   const heroCharacters = filteredCharacters.slice(0, 3)
+  const primaryCharacter = heroCharacters[0] ?? filteredCharacters[0] ?? characters[0]
   const selectedCharacter = selectedCharacterId ? CHARACTERS[selectedCharacterId] : null
   const selectedCharacterMeta = selectedCharacter ? CHARACTER_UI_META[selectedCharacter.id] : null
 
@@ -246,21 +247,31 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
 
       <main className="relative z-10 mx-auto max-w-6xl space-y-8 px-4 py-5 md:py-6">
         <section className="space-y-3">
-          <div className="rounded-2xl border border-white/45 bg-white/65 p-4 shadow-[0_20px_35px_-28px_rgba(24,22,19,0.85)]">
-            <div className="flex items-center gap-2 text-[#5d574d]">
+          <div className="rounded-2xl border border-white/45 bg-white/70 p-4 shadow-[0_20px_35px_-28px_rgba(24,22,19,0.85)]">
+            <div className="flex items-center gap-2 text-[#4c463e]">
               <Sparkles className="h-4 w-4 text-[#f55f53]" />
-              <p className="text-sm font-semibold">오늘의 빠른 시작</p>
+              <p className="text-sm font-semibold">빠르게 시작하기</p>
             </div>
-            <p className="mt-2 text-sm text-[#6d665d]">
-              최근 채팅은 아래에서 바로 이어서 대화할 수 있어요.
-            </p>
+            <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-[#5f584d]">
+                최근 기록을 이어가거나 추천 캐릭터와 바로 대화를 시작해보세요.
+              </p>
+              {primaryCharacter && (
+                <Button
+                  onClick={() => onCharacterSelect(primaryCharacter)}
+                  className="h-10 rounded-full bg-[#f55f53] px-5 text-sm font-semibold text-white shadow-[0_12px_24px_-16px_rgba(245,95,83,0.92)] transition hover:bg-[#e85347]"
+                >
+                  {primaryCharacter.name}와 시작
+                </Button>
+              )}
+            </div>
           </div>
 
           {recentChats.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-bold text-[#2b2d35]">최근 채팅</h3>
-                <p className="text-xs text-[#80786e]">{recentChats.length}개</p>
+                <p className="text-xs font-semibold text-[#756d62]">{recentChats.length}개</p>
               </div>
 
               <div className="-mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-1">
@@ -272,13 +283,13 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
                     <button
                       key={item.characterId}
                       onClick={() => onCharacterSelect(char)}
-                      className="min-w-[240px] snap-start rounded-2xl border border-white/45 bg-white/72 p-3 text-left shadow-[0_14px_24px_-20px_rgba(23,22,20,0.72)] transition hover:-translate-y-0.5 hover:border-[#e9b4ae]"
+                      className="min-w-[240px] snap-start rounded-2xl border border-white/45 bg-white/76 p-3 text-left shadow-[0_14px_24px_-20px_rgba(23,22,20,0.72)] transition hover:-translate-y-0.5 hover:border-[#e9b4ae]"
                     >
                       <div className="flex items-center gap-3">
                         <img src={char.images.normal} alt={char.name} className="h-12 w-12 rounded-xl object-cover object-top" />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-bold text-[#2f3138]">{char.name}</p>
-                          <p className="mt-1 truncate text-xs text-[#6e685d]">{item.preview}</p>
+                          <p className="mt-1 truncate text-xs text-[#625b50]">{item.preview}</p>
                         </div>
                       </div>
                     </button>
@@ -288,7 +299,7 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
             </div>
           )}
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 pt-1">
             {CHARACTER_FILTERS.map((filter) => {
               const isActive = activeFilter === filter
               return (
@@ -309,6 +320,10 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
         </section>
 
         <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-2xl font-black text-[#252730]">추천 캐릭터</h3>
+            <p className="text-xs font-semibold text-[#7a7469]">상세 보기 후 대화 시작</p>
+          </div>
           {heroCharacters.length > 0 && (
             <div className="-mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-1 md:mx-0 md:grid md:overflow-visible md:px-0 md:pb-0 md:grid-cols-[1.5fr_1fr_1fr]">
               {heroCharacters.map((char, index) => {
@@ -358,7 +373,7 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
                 <button
                   key={char.id}
                   onClick={() => setSelectedCharacterId(char.id)}
-                  className="group overflow-hidden rounded-2xl border border-white/45 bg-[#f3ece1]/72 text-left shadow-[0_18px_30px_-22px_rgba(26,25,23,0.72)] transition duration-300 hover:-translate-y-1.5 hover:border-[#e0a69f] hover:shadow-[0_24px_38px_-22px_rgba(26,25,23,0.84)]"
+                  className="group overflow-hidden rounded-2xl border border-white/45 bg-[#f3ece1]/80 text-left shadow-[0_18px_30px_-22px_rgba(26,25,23,0.72)] transition duration-300 hover:-translate-y-1.5 hover:border-[#e0a69f] hover:shadow-[0_24px_38px_-22px_rgba(26,25,23,0.84)]"
                 >
                   <div className="relative aspect-square overflow-hidden">
                     <img
@@ -376,7 +391,7 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
 
                   <div className="space-y-2 p-3">
                     <h4 className="text-lg font-bold leading-tight text-[#282a33]">{char.name}</h4>
-                    <p className="line-clamp-2 text-sm leading-relaxed text-[#605a50]">{meta.summary}</p>
+                    <p className="line-clamp-2 text-sm leading-relaxed text-[#4d473f]">{meta.summary}</p>
                     <div className="flex flex-wrap gap-1.5">
                       {meta.tags.slice(0, 2).map((tag) => (
                         <span key={tag} className="rounded-md border border-[#dacfbf] bg-white/75 px-2 py-1 text-[11px] font-medium text-[#6b6459]">

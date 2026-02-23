@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from "react"
 import { Character, Message, AIResponse, CHARACTERS } from "@/lib/data"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Avatar } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import { Send, ArrowLeft, Trash2 } from "lucide-react"
@@ -125,6 +124,8 @@ const EMOTION_LABELS: Record<AIResponse["emotion"], string> = {
   angry: "감정 고조",
 }
 
+const QUICK_REPLY_TEMPLATES = ["계속 말해줘", "조금 더 자세히 알려줘", "다른 전개로 이어가줘"]
+
 export function ChatView({ character, onCharacterChange, user, onBack }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -142,6 +143,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
   const [historyPreviews, setHistoryPreviews] = useState<Record<string, HistoryPreview>>({})
   const [showEmotionIllustrations, setShowEmotionIllustrations] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const messageInputRef = useRef<HTMLTextAreaElement>(null)
   const isLoadingHistoryRef = useRef(false)
   const messagesRef = useRef(messages)
   const chatApiUrlRef = useRef(resolveChatApiUrl())
@@ -503,6 +505,15 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [messages])
+
+  useEffect(() => {
+    if (!messageInputRef.current) {
+      return
+    }
+
+    messageInputRef.current.style.height = "0px"
+    messageInputRef.current.style.height = `${Math.min(messageInputRef.current.scrollHeight, 156)}px`
+  }, [inputValue])
 
   useEffect(() => {
     if (messages.length <= 1) {
@@ -908,39 +919,60 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
     })
   }
 
+  const handleInputKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Enter" || event.shiftKey) {
+      return
+    }
+
+    event.preventDefault()
+    void handleSendMessage()
+  }
+
+  const handleQuickReplyClick = (template: string) => {
+    setInputValue(template)
+    requestAnimationFrame(() => {
+      messageInputRef.current?.focus()
+    })
+  }
+
   const characterMeta = CHARACTER_UI_META[character.id]
-  const historyCharacterEntries = Object.entries(historyPreviews)
-    .filter(([, preview]) => preview.hasHistory)
+  const sidebarCharacterEntries = Object.values(CHARACTERS)
+    .map((item) => {
+      const preview = historyPreviews[item.id]
+      const fallback = toTruncatedPreview(CHARACTER_UI_META[item.id]?.summary || "", 52)
+
+      return {
+        character: item,
+        hasHistory: Boolean(preview?.hasHistory),
+        updatedAt: preview?.updatedAt || null,
+        previewText: preview?.text || fallback,
+      }
+    })
     .sort((a, b) => {
-      const dateA = a[1].updatedAt ? Date.parse(a[1].updatedAt) : 0
-      const dateB = b[1].updatedAt ? Date.parse(b[1].updatedAt) : 0
+      if (a.character.id === character.id) return -1
+      if (b.character.id === character.id) return 1
+      if (a.hasHistory !== b.hasHistory) return a.hasHistory ? -1 : 1
+
+      const dateA = a.updatedAt ? Date.parse(a.updatedAt) || 0 : 0
+      const dateB = b.updatedAt ? Date.parse(b.updatedAt) || 0 : 0
       return dateB - dateA
     })
-    .map(([characterId, preview]) => ({
-      character: CHARACTERS[characterId],
-      preview,
-    }))
-    .filter((item): item is { character: Character; preview: HistoryPreview } => Boolean(item.character))
 
   return (
     <div className="relative h-dvh overflow-hidden bg-[#e7dfd3] text-[#22242b]">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(149,131,177,0.18),transparent_34%),radial-gradient(circle_at_84%_82%,rgba(129,157,179,0.14),transparent_38%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_16%_18%,rgba(123,109,140,0.16),transparent_34%),radial-gradient(circle_at_84%_85%,rgba(112,139,160,0.12),transparent_34%)]" />
 
-      <div className="relative z-10 mx-auto grid h-full w-full max-w-[1500px] lg:grid-cols-[300px_minmax(0,1fr)]">
-        <aside className="hidden h-full border-r border-white/45 bg-[#eee7db]/75 p-4 backdrop-blur-xl lg:block">
+      <div className="relative z-10 mx-auto grid h-full w-full max-w-[1520px] lg:grid-cols-[320px_minmax(0,1fr)]">
+        <aside className="hidden h-full border-r border-white/45 bg-[#eee7db]/74 p-4 backdrop-blur-xl lg:block">
           <div className="flex h-full flex-col">
-            <div className="px-2">
-              <p className="text-sm font-bold text-[#2f3138]">채팅 내역</p>
+            <div className="flex items-center justify-between px-2">
+              <p className="text-sm font-bold text-[#2f3138]">캐릭터 목록</p>
+              <p className="text-xs text-[#8e867a]">{sidebarCharacterEntries.filter((entry) => entry.hasHistory).length}개 기록</p>
             </div>
 
             <div className="mt-4 space-y-2 overflow-y-auto pr-1">
-              {historyCharacterEntries.length === 0 && (
-                <div className="rounded-2xl border border-white/45 bg-white/72 px-3 py-4 text-xs text-[#7a7469]">
-                  아직 채팅 내역이 없습니다.
-                </div>
-              )}
-
-              {historyCharacterEntries.map(({ character: item, preview }) => {
+              {sidebarCharacterEntries.map((entry) => {
+                const item = entry.character
                 const isActive = item.id === character.id
 
                 return (
@@ -950,8 +982,8 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
                     className={cn(
                       "w-full rounded-2xl border p-3 text-left shadow-[0_14px_24px_-20px_rgba(23,22,20,0.72)] transition",
                       isActive
-                        ? "border-[#e9b4ae] bg-white/88"
-                        : "border-white/45 bg-white/72 hover:border-[#e9b4ae]"
+                        ? "border-[#e8b0ab] bg-white/92"
+                        : "border-white/45 bg-white/72 hover:border-[#e7b4ae]"
                     )}
                   >
                     <div className="flex items-start gap-3">
@@ -962,11 +994,13 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
                         className="size-10 border border-black/10 object-cover object-top"
                       />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-bold text-[#2f3138]">{item.name}</p>
-                        <p className="mt-1 truncate text-xs text-[#6e685d]">{preview.text}</p>
-                        <p className="mt-2 text-[11px] text-[#9b9488]">
-                          {preview.updatedAt ? "대화 기록 있음" : "새 대화"}
-                        </p>
+                        <div className="flex items-center justify-between gap-1">
+                          <p className="truncate text-sm font-bold text-[#2f3138]">{item.name}</p>
+                          <span className="rounded-full border border-[#d8cebf] bg-white/75 px-1.5 py-0.5 text-[10px] font-semibold text-[#7b7469]">
+                            {entry.hasHistory ? "최근" : "새 대화"}
+                          </span>
+                        </div>
+                        <p className="mt-1 truncate text-xs text-[#6b655b]">{entry.previewText}</p>
                       </div>
                     </div>
                   </button>
@@ -977,7 +1011,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
         </aside>
 
         <div className="flex h-full min-w-0 flex-col">
-          <header className="flex items-center justify-between border-b border-white/55 bg-[#efe8dc]/88 p-3 shadow-[0_16px_26px_-24px_rgba(23,22,19,0.8)] backdrop-blur-xl lg:p-5">
+          <header className="flex items-center justify-between border-b border-white/55 bg-[#efe8dc]/88 p-3 shadow-[0_16px_26px_-24px_rgba(23,22,19,0.8)] backdrop-blur-xl lg:px-6 lg:py-4">
             <div className="flex min-w-0 items-center gap-3">
               <Button
                 variant="ghost"
@@ -989,8 +1023,8 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
               </Button>
 
               <div className="min-w-0">
-                <p className="truncate text-sm font-bold text-[#2f3138]">{character.name}</p>
-                <p className="truncate text-xs text-[#857d72]">{characterMeta.tags.join(" · ")}</p>
+                <p className="truncate text-base font-bold text-[#2f3138]">{character.name}</p>
+                <p className="truncate text-xs text-[#6e675c]">{characterMeta.tags.join(" · ")}</p>
               </div>
             </div>
 
@@ -1020,21 +1054,22 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
               <select
                 value={character.id}
                 onChange={(e) => onCharacterChange(e.target.value)}
-                className="max-w-[132px] cursor-pointer rounded-xl border border-[#c7bcac] bg-white/78 px-2.5 py-1.5 text-[11px] uppercase tracking-[0.08em] text-[#5f635f] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] outline-none transition hover:bg-white focus:border-[#e05d4e] sm:max-w-none sm:px-4 sm:py-2 sm:text-xs sm:tracking-wider"
+                className="cursor-pointer rounded-xl border border-[#c7bcac] bg-white/78 px-2.5 py-1.5 text-xs text-[#5f635f] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] outline-none transition hover:bg-white focus:border-[#e05d4e] lg:hidden"
               >
-                <option value="mika">Misono Mika</option>
-                <option value="alice">Alice Zuberg</option>
-                <option value="kael">Kael</option>
+                {Object.values(CHARACTERS).map((option) => (
+                  <option key={option.id} value={option.id}>{option.name}</option>
+                ))}
               </select>
             </div>
           </header>
 
-          <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-4 scroll-smooth sm:px-4 lg:px-6 lg:py-6">
-            <div className="mx-auto w-full max-w-[920px] rounded-3xl border border-white/45 bg-white/30 p-3 shadow-[0_18px_40px_-34px_rgba(23,22,19,0.7)] backdrop-blur-[2px] sm:p-4">
-              <div className="space-y-5">
-                <p className="text-center text-xs font-medium text-[#746d63]">이 대화는 AI로 생성된 가상의 이야기입니다</p>
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-4 scroll-smooth sm:px-4 lg:px-8 lg:py-6">
+            <div className="mx-auto w-full max-w-[920px] space-y-5">
+              <p className="rounded-full bg-white/50 px-3 py-1 text-center text-xs font-semibold text-[#70695f]">
+                이 대화는 AI로 생성된 가상의 이야기입니다
+              </p>
 
-                {messages.map((msg, index) => {
+              {messages.map((msg, index) => {
                 const isUser = msg.role === "user"
                 const assistantPayload = typeof msg.content === "string" ? null : msg.content
                 const content = typeof msg.content === "string" ? msg.content : msg.content.response
@@ -1054,14 +1089,11 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
                 return (
                   <div
                     key={msg.id}
-                    className={cn(
-                      "fade-in flex w-full",
-                      isUser ? "justify-end" : "justify-start"
-                    )}
+                    className={cn("fade-in flex w-full", isUser ? "justify-end" : "justify-start")}
                   >
                     <div
                       className={cn(
-                        "flex max-w-[94%] gap-3 md:max-w-[78%]",
+                        "flex w-full max-w-[92%] gap-3 sm:max-w-[82%]",
                         isUser ? "flex-row-reverse" : "flex-row"
                       )}
                     >
@@ -1070,13 +1102,13 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
                           src={messageImage}
                           alt={character.name}
                           fallback={character.name[0]}
-                          className="size-10 shrink-0 border border-black/10 object-cover object-top"
+                          className="mt-1 size-9 shrink-0 border border-black/10 object-cover object-top"
                         />
                       )}
 
-                      <div className="min-w-0 flex-1">
+                      <div className="min-w-0 flex-1 space-y-2">
                         {showIllustrationCard && emotion && (
-                          <div className="mb-3 max-w-[380px] overflow-hidden rounded-2xl border border-white/65 bg-white/90 shadow-[0_18px_32px_-24px_rgba(24,23,20,0.72)]">
+                          <div className="max-w-[420px] overflow-hidden rounded-2xl border border-white/65 bg-white/90 shadow-[0_16px_28px_-22px_rgba(24,23,20,0.72)]">
                             <img
                               src={messageImage}
                               alt={`${character.name} ${emotion}`}
@@ -1090,57 +1122,73 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
                         )}
 
                         {!isUser && narration && (
-                          <div className="mb-3 rounded-xl border border-[#d5cab8] bg-[#f3ecdf]/95 p-3 text-xs leading-relaxed text-[#4f493f] shadow-[0_8px_18px_-16px_rgba(0,0,0,0.45)]">
-                            {narration}
+                          <div className="rounded-xl border border-[#d9ceb8] bg-[#f3ecdf]/95 px-3 py-2 text-sm leading-relaxed text-[#4f493f]">
+                            <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[#847a69]">상황</p>
+                            <p className="whitespace-pre-wrap">{narration}</p>
                           </div>
                         )}
 
                         <div
                           className={cn(
-                            "rounded-2xl p-4 text-[14px] leading-7 shadow-[0_16px_28px_-22px_rgba(34,35,43,0.45)] sm:text-[15px]",
+                            "rounded-2xl border px-4 py-3 text-[15px] leading-7 shadow-[0_12px_24px_-18px_rgba(34,35,43,0.38)]",
                             isUser
-                              ? "rounded-br-sm border border-[#2d3038] bg-gradient-to-br from-[#3d4049] to-[#2c2f38] text-[#fbfaf7]"
-                              : "rounded-bl-sm border border-[#ddd3c7] bg-[#fbf8f2]/96 text-[#1f222a]"
+                              ? "rounded-br-sm border-[#2d3038] bg-gradient-to-br from-[#3d4049] to-[#2c2f38] text-[#fbfaf7]"
+                              : "rounded-bl-sm border-[#d9cfbf] bg-[#fcf9f2] text-[#1f222a]"
                           )}
                         >
                           {!isUser && innerHeart && (
-                            <div className="mb-3 rounded-xl border border-[#d8c7d8] bg-[#f7eef6]/96 p-3 text-xs font-semibold leading-relaxed text-[#6c5169]">
-                              💭 {innerHeart}
+                            <div className="mb-3 rounded-xl border border-[#d7c8d7] bg-[#f7eef6]/96 px-3 py-2">
+                              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#7d5f79]">속마음</p>
+                              <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-[#5d445b]">{innerHeart}</p>
                             </div>
                           )}
-                          <div className="whitespace-pre-wrap">{content}</div>
+                          <div className="whitespace-pre-wrap break-words">{content}</div>
                         </div>
                       </div>
                     </div>
                   </div>
                 )
-                })}
+              })}
 
-                {isLoading && (
-                  <div className="fade-in flex justify-start">
-                    <div className="rounded-2xl rounded-bl-sm border border-[#ddd3c7] bg-[#fbf8f2]/96 px-5 py-3 text-xs font-medium text-[#6a645a] shadow-[0_12px_22px_-20px_rgba(0,0,0,0.65)]">
-                      <span className="inline-flex items-center gap-1">
-                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8] [animation-delay:-0.2s]" />
-                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8] [animation-delay:-0.1s]" />
-                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8]" />
-                      </span>
-                    </div>
+              {isLoading && (
+                <div className="fade-in flex justify-start">
+                  <div className="flex items-center gap-2 rounded-2xl rounded-bl-sm border border-[#ddd3c7] bg-[#fbf8f2]/96 px-4 py-2.5 text-sm text-[#6a645a] shadow-[0_12px_22px_-20px_rgba(0,0,0,0.65)]">
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8] [animation-delay:-0.2s]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8] [animation-delay:-0.1s]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#8f8aa8]" />
+                    <span className="ml-1 text-xs font-semibold text-[#7f786e]">답변 작성 중...</span>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="bg-gradient-to-t from-[#e7dfd3] via-[#e7dfd3]/95 to-transparent px-3 pb-[calc(0.85rem+env(safe-area-inset-bottom))] pt-3 sm:p-4 lg:p-6">
-            <div className="mx-auto w-full max-w-4xl rounded-2xl border border-white/45 bg-[#f7f2ea]/82 shadow-[0_20px_34px_-22px_rgba(42,45,53,0.52)] backdrop-blur-xl">
-              <div className="flex items-center gap-2 px-3 py-3">
-                <Input
+          <div className="border-t border-white/45 bg-[#ece4d8]/82 px-3 pb-[calc(0.95rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl sm:px-4 lg:px-8 lg:pb-[calc(1.1rem+env(safe-area-inset-bottom))] lg:pt-4">
+            <div className="mx-auto w-full max-w-[920px]">
+              <div className="mb-3 flex flex-wrap gap-2">
+                {QUICK_REPLY_TEMPLATES.map((template) => (
+                  <button
+                    key={template}
+                    type="button"
+                    onClick={() => handleQuickReplyClick(template)}
+                    disabled={isLoading}
+                    className="rounded-full border border-[#d8cebe] bg-white/80 px-3 py-1.5 text-xs font-semibold text-[#615b51] transition hover:border-[#e5b4ae] hover:text-[#3b3c43] disabled:cursor-not-allowed disabled:opacity-55"
+                  >
+                    {template}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-end gap-2 rounded-2xl border border-white/45 bg-[#f7f2ea]/88 p-2.5 shadow-[0_16px_28px_-20px_rgba(32,31,27,0.55)]">
+                <textarea
+                  ref={messageInputRef}
                   value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
+                  onChange={(event) => setInputValue(event.target.value)}
+                  onKeyDown={handleInputKeyDown}
                   placeholder="메시지를 입력하세요"
                   disabled={isLoading}
-                  className="h-10 flex-1 border-0 bg-transparent text-[#2a2c34] placeholder:text-[#847c73] focus-visible:ring-0"
+                  rows={1}
+                  className="max-h-[156px] min-h-[42px] flex-1 resize-none bg-transparent px-1 py-2 text-[15px] leading-6 text-[#2a2c34] placeholder:text-[#847c73] outline-none disabled:cursor-not-allowed disabled:opacity-50"
                 />
                 <Button
                   onClick={handleSendMessage}
@@ -1150,6 +1198,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
                   <Send className="size-4" />
                 </Button>
               </div>
+              <p className="mt-2 px-1 text-[11px] text-[#8f877b]">Enter 전송 · Shift + Enter 줄바꿈</p>
             </div>
           </div>
         </div>

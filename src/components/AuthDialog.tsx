@@ -16,10 +16,12 @@ interface AuthDialogProps {
 
 export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
+  const [isResetLoading, setIsResetLoading] = useState(false)
   const [activeTab, setActiveTab] = useState("signin")
   
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
   const [name, setName] = useState("")
 
   const handleSignIn = async (e: React.FormEvent) => {
@@ -60,6 +62,11 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
       return
     }
     
+    if (password !== confirmPassword) {
+      toast.error("비밀번호가 일치하지 않습니다.")
+      return
+    }
+
     setIsLoading(true)
 
     try {
@@ -89,6 +96,7 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
           onOpenChange(false)
           setEmail("")
           setPassword("")
+          setConfirmPassword("")
           setName("")
           onSuccess?.()
         } else {
@@ -96,6 +104,7 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
           onOpenChange(false)
           setEmail("")
           setPassword("")
+          setConfirmPassword("")
           setName("")
         }
       }
@@ -104,6 +113,32 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
       toast.error(error.message || "회원가입에 실패했습니다")
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleResetPassword = async () => {
+    if (!isSupabaseConfigured()) {
+      toast.error("Supabase가 설정되지 않았습니다. 환경 변수를 확인해주세요.")
+      return
+    }
+
+    if (!email.trim()) {
+      toast.error("비밀번호 재설정을 위해 이메일을 입력해주세요.")
+      return
+    }
+
+    setIsResetLoading(true)
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/`,
+      })
+
+      if (error) throw error
+      toast.success("비밀번호 재설정 메일을 발송했습니다.")
+    } catch (error: any) {
+      toast.error(error.message || "비밀번호 재설정 메일 발송에 실패했습니다")
+    } finally {
+      setIsResetLoading(false)
     }
   }
 
@@ -150,6 +185,14 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
                   className="border-[#d1c4b3] bg-white/75 text-[#22242b] focus-visible:border-[#e05d4e]"
                 />
               </div>
+              <button
+                type="button"
+                onClick={handleResetPassword}
+                disabled={isResetLoading || isLoading}
+                className="text-xs font-semibold text-[#7a6757] underline-offset-2 transition hover:text-[#d45648] hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isResetLoading ? "재설정 메일 발송 중..." : "비밀번호를 잊으셨나요?"}
+              </button>
               <Button type="submit" className="w-full bg-[#f55f53] text-white shadow-[0_14px_26px_-18px_rgba(245,95,83,0.95)] transition hover:bg-[#ea564a]" disabled={isLoading}>
                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 로그인
@@ -189,6 +232,19 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
                   type="password" 
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  className="border-[#d1c4b3] bg-white/75 text-[#22242b] focus-visible:border-[#e05d4e]"
+                />
+                <p className="text-xs text-[#8a8378]">영문/숫자 포함 6자 이상 권장</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="signup-password-confirm" className="text-[#6f6a61]">비밀번호 확인</Label>
+                <Input 
+                  id="signup-password-confirm" 
+                  type="password" 
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
                   required
                   minLength={6}
                   className="border-[#d1c4b3] bg-white/75 text-[#22242b] focus-visible:border-[#e05d4e]"
