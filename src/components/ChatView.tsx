@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { Character, Message, AIResponse, CHARACTERS } from "@/lib/data"
 import { Button } from "@/components/ui/button"
 import { Avatar } from "@/components/ui/avatar"
@@ -126,6 +126,32 @@ const EMOTION_LABELS: Record<AIResponse["emotion"], string> = {
 
 const QUICK_REPLY_TEMPLATES = ["계속 말해줘", "조금 더 자세히 알려줘", "다른 전개로 이어가줘"]
 
+const systemPromptCache = new Map<string, string>()
+
+const SYSTEM_PROMPT_LOADERS: Record<string, () => Promise<string>> = {
+  mika: async () => (await import("@/lib/prompts/mika")).buildMikaPrompt(),
+  alice: async () => (await import("@/lib/prompts/alice")).buildAlicePrompt(),
+  kael: async () => (await import("@/lib/prompts/kael")).buildKaelPrompt(),
+}
+
+const resolveSystemPrompt = async (characterId: string): Promise<string> => {
+  if (systemPromptCache.has(characterId)) {
+    return systemPromptCache.get(characterId) || ""
+  }
+
+  const loader = SYSTEM_PROMPT_LOADERS[characterId]
+  if (!loader) {
+    return ""
+  }
+
+  const loadedPrompt = await loader()
+  const normalizedPrompt = String(loadedPrompt || "").trim()
+  if (normalizedPrompt) {
+    systemPromptCache.set(characterId, normalizedPrompt)
+  }
+  return normalizedPrompt
+}
+
 export function ChatView({ character, onCharacterChange, user, onBack }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -161,20 +187,13 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
     return character.images.normal
   }
 
-  const findPreviousAssistantEmotion = (targetIndex: number): AIResponse["emotion"] | null => {
-    for (let i = targetIndex - 1; i >= 0; i -= 1) {
-      const candidate = messages[i]
-      if (candidate.role !== "assistant" || typeof candidate.content === "string") {
-        continue
-      }
-      return candidate.content.emotion
-    }
-    return null
-  }
-
   useEffect(() => {
     messagesRef.current = messages
   }, [messages])
+
+  useEffect(() => {
+    void resolveSystemPrompt(character.id)
+  }, [character.id])
 
   useEffect(() => {
     const loadHistory = async () => {
@@ -568,6 +587,10 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
         role: msg.role,
         content: typeof msg.content === "string" ? msg.content : msg.content.response,
       }))
+      const systemPrompt = await resolveSystemPrompt(character.id)
+      if (!systemPrompt) {
+        throw createChatApiError("캐릭터 시스템 설정을 불러오지 못했습니다. 다시 시도해주세요.", "CLIENT_PROMPT_LOAD_FAILED")
+      }
 
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 17000)
@@ -583,7 +606,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
           },
           body: JSON.stringify({
             characterId: character.id,
-            systemPrompt: character.system,
+            systemPrompt,
             userMessage: text,
             messageHistory: messageHistory.slice(1), // greeting 제외
             cachedContent: cachedContent || undefined,
@@ -957,6 +980,41 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
       const dateB = b.updatedAt ? Date.parse(b.updatedAt) || 0 : 0
       return dateB - dateA
     })
+  const preparedMessages = useMemo(() => {
+    let previousAssistantEmotion: AIResponse["emotion"] | null = null
+
+    return messages.map((msg) => {
+      const isUser = msg.role === "user"
+      const assistantPayload = typeof msg.content === "string" ? null : msg.content
+      const content = typeof msg.content === "string" ? msg.content : msg.content.response
+      const innerHeart = assistantPayload?.inner_heart ?? null
+      const narration = typeof assistantPayload?.narration === "string" ? assistantPayload.narration.trim() : ""
+      const emotion = assistantPayload?.emotion
+      const showIllustrationCard = Boolean(
+        !isUser &&
+        showEmotionIllustrations &&
+        emotion &&
+        previousAssistantEmotion &&
+        emotion !== previousAssistantEmotion
+      )
+      const messageImage = resolveEmotionImage(emotion)
+
+      if (!isUser && emotion) {
+        previousAssistantEmotion = emotion
+      }
+
+      return {
+        msg,
+        isUser,
+        content,
+        innerHeart,
+        narration,
+        emotion,
+        showIllustrationCard,
+        messageImage,
+      }
+    })
+  }, [messages, showEmotionIllustrations, character])
 
   return (
     <div className="relative h-dvh overflow-hidden bg-[#e7dfd3] text-[#22242b]">
@@ -1069,23 +1127,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
                 이 대화는 AI로 생성된 가상의 이야기입니다
               </p>
 
-              {messages.map((msg, index) => {
-                const isUser = msg.role === "user"
-                const assistantPayload = typeof msg.content === "string" ? null : msg.content
-                const content = typeof msg.content === "string" ? msg.content : msg.content.response
-                const innerHeart = assistantPayload?.inner_heart ?? null
-                const narration = typeof assistantPayload?.narration === "string" ? assistantPayload.narration.trim() : ""
-                const emotion = assistantPayload?.emotion
-                const previousEmotion = !isUser ? findPreviousAssistantEmotion(index) : null
-                const showIllustrationCard = Boolean(
-                  !isUser &&
-                  showEmotionIllustrations &&
-                  emotion &&
-                  previousEmotion &&
-                  emotion !== previousEmotion
-                )
-                const messageImage = resolveEmotionImage(emotion)
-
+              {preparedMessages.map(({ msg, isUser, content, innerHeart, narration, emotion, showIllustrationCard, messageImage }) => {
                 return (
                   <div
                     key={msg.id}
@@ -1108,12 +1150,13 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
 
                       <div className="min-w-0 flex-1 space-y-2">
                         {showIllustrationCard && emotion && (
-                          <div className="max-w-[420px] overflow-hidden rounded-2xl border border-white/65 bg-white/90 shadow-[0_16px_28px_-22px_rgba(24,23,20,0.72)]">
+                          <div className="w-full max-w-[720px] overflow-hidden rounded-2xl border border-white/65 bg-white/90 shadow-[0_20px_34px_-24px_rgba(24,23,20,0.72)]">
                             <img
                               src={messageImage}
                               alt={`${character.name} ${emotion}`}
-                              className="h-44 w-full object-cover object-top sm:h-56"
+                              className="h-[280px] w-full object-cover object-top sm:h-[400px] lg:h-[500px]"
                               loading="lazy"
+                              decoding="async"
                             />
                             <div className="border-t border-black/5 bg-[#f6f1e9] px-3 py-2 text-[11px] font-semibold text-[#5f584d]">
                               {character.name} · {EMOTION_LABELS[emotion]}

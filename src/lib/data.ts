@@ -1,5 +1,3 @@
-import { buildAlicePrompt, buildKaelPrompt, buildMikaPrompt } from "./prompts"
-
 export interface Character {
   id: string
   name: string
@@ -10,7 +8,6 @@ export interface Character {
     confused?: string
     angry: string
   }
-  system: string
 }
 
 export interface Message {
@@ -37,7 +34,6 @@ export const CHARACTERS: Record<string, Character> = {
       happy: "/mika_happy.png",
       angry: "/mika_angry.png",
     },
-    system: buildMikaPrompt(),
   },
   alice: {
     id: "alice",
@@ -48,7 +44,6 @@ export const CHARACTERS: Record<string, Character> = {
       confused: "/alice_confused.png",
       angry: "/alice_angry.png",
     },
-    system: buildAlicePrompt(),
   },
   kael: {
     id: "kael",
@@ -59,6 +54,5 @@ export const CHARACTERS: Record<string, Character> = {
       happy: "/kael_happy.png",
       angry: "/kael_angry.png",
     },
-    system: buildKaelPrompt(),
   },
 }
