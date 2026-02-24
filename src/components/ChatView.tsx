@@ -174,6 +174,13 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
   const isLoadingHistoryRef = useRef(false)
   const messagesRef = useRef(messages)
   const chatApiUrlRef = useRef(resolveChatApiUrl())
+  const activeCharacterIdRef = useRef(character.id)
+  const requestCounterRef = useRef(0)
+  const inFlightRequestRef = useRef<{
+    id: number
+    characterId: string
+    controller: AbortController
+  } | null>(null)
   const getPromptCacheKey = (charId: string) => `gemini_cached_content_${charId}`
   const resolveEmotionImage = (emotion?: AIResponse["emotion"]) => {
     if (emotion === "confused" && character.images.confused) {
@@ -195,6 +202,23 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
   useEffect(() => {
     void resolveSystemPrompt(character.id)
   }, [character.id])
+
+  useEffect(() => {
+    activeCharacterIdRef.current = character.id
+    if (inFlightRequestRef.current) {
+      inFlightRequestRef.current.controller.abort()
+      inFlightRequestRef.current = null
+    }
+    setIsLoading(false)
+  }, [character.id])
+
+  useEffect(() => {
+    return () => {
+      if (inFlightRequestRef.current) {
+        inFlightRequestRef.current.controller.abort()
+      }
+    }
+  }, [])
 
   useEffect(() => {
     setIsInfoPanelOpen(false)
@@ -573,6 +597,22 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
     const text = inputValue.trim()
     if (!text || isLoading) return
 
+    const requestCharacterId = character.id
+    const requestId = requestCounterRef.current + 1
+    requestCounterRef.current = requestId
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 17000)
+
+    inFlightRequestRef.current = {
+      id: requestId,
+      characterId: requestCharacterId,
+      controller,
+    }
+
+    const isRequestStale = () =>
+      activeCharacterIdRef.current !== requestCharacterId ||
+      inFlightRequestRef.current?.id !== requestId
+
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
@@ -581,7 +621,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
     setMessages((prev) => [...prev, userMessage])
 
     if (user) {
-      void saveMessage(userMessage)
+      void saveMessage(userMessage, requestCharacterId)
     }
 
     setInputValue("")
@@ -592,16 +632,17 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
         role: msg.role,
         content: typeof msg.content === "string" ? msg.content : msg.content.response,
       }))
-      const systemPrompt = await resolveSystemPrompt(character.id)
+      const systemPrompt = await resolveSystemPrompt(requestCharacterId)
       if (!systemPrompt) {
         throw createChatApiError("캐릭터 시스템 설정을 불러오지 못했습니다. 다시 시도해주세요.", "CLIENT_PROMPT_LOAD_FAILED")
       }
 
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 17000)
+      if (isRequestStale()) {
+        return
+      }
 
       let response
-      const cacheStorageKey = getPromptCacheKey(character.id)
+      const cacheStorageKey = getPromptCacheKey(requestCharacterId)
       const cachedContent = localStorage.getItem(cacheStorageKey)
       try {
         response = await fetch(chatApiUrlRef.current, {
@@ -610,7 +651,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            characterId: character.id,
+            characterId: requestCharacterId,
             systemPrompt,
             userMessage: text,
             messageHistory: messageHistory.slice(1), // greeting 제외
@@ -618,15 +659,20 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
           }),
           signal: controller.signal,
         })
-        clearTimeout(timeoutId)
       } catch (fetchError: any) {
-        clearTimeout(timeoutId)
         if (fetchError.name === "AbortError") {
+          if (isRequestStale()) {
+            return
+          }
           throw createChatApiError("응답 시간이 초과되었습니다. 네트워크 연결을 확인해주세요.", "CLIENT_TIMEOUT")
         } else if (fetchError.message.includes("Failed to fetch")) {
           throw createChatApiError("서버에 연결할 수 없습니다. 인터넷 연결을 확인해주세요.", "CLIENT_NETWORK_ERROR")
         }
         throw fetchError
+      }
+
+      if (isRequestStale()) {
+        return
       }
 
       if (!response.ok) {
@@ -720,6 +766,10 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
         )
       }
 
+      if (isRequestStale()) {
+        return
+      }
+
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
@@ -728,9 +778,13 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
       setMessages((prev) => [...prev, assistantMessage])
 
       if (user) {
-        void saveMessage(assistantMessage)
+        void saveMessage(assistantMessage, requestCharacterId)
       }
     } catch (err: any) {
+      if (isRequestStale()) {
+        return
+      }
+
       let parsed: AIResponse
       const errorCode = typeof err?.chatErrorCode === "string" ? err.chatErrorCode : ""
       const traceId = typeof err?.chatTraceId === "string" ? err.chatTraceId : ""
@@ -739,7 +793,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
 
       if (errorCode) {
         console.error("[V-MATE] Chat request failed", {
-          characterId: character.id,
+          characterId: requestCharacterId,
           errorCode,
           traceId: traceId || null,
           message: errorMsg,
@@ -750,15 +804,15 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
         parsed = {
           emotion: "normal",
           inner_heart:
-            character.id === "mika"
+            requestCharacterId === "mika"
               ? "서버 연결이 흔들려서 답장을 못 만들었어..."
-              : character.id === "alice"
+              : requestCharacterId === "alice"
                 ? "상류 모델 연결이 불안정하군."
                 : "서버 연결 불안정.",
           response:
-            character.id === "mika"
+            requestCharacterId === "mika"
               ? `선생님, 지금 AI 서버 연결이 불안정해서 답장을 만들지 못했어. 잠깐 뒤에 다시 시도해줘.${traceSuffix}`
-              : character.id === "alice"
+              : requestCharacterId === "alice"
                 ? `현재 AI 서버 연결이 불안정하여 응답 생성에 실패했다. 잠시 후 다시 시도해달라.${traceSuffix}`
                 : `지금 AI 서버 연결이 불안정해서 답장 생성 실패. 잠깐 뒤에 다시 시도해줘.${traceSuffix}`,
         }
@@ -766,15 +820,15 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
         parsed = {
           emotion: "normal",
           inner_heart:
-            character.id === "mika"
+            requestCharacterId === "mika"
               ? "서버 지역 정책 때문에 호출이 막혔어..."
-              : character.id === "alice"
+              : requestCharacterId === "alice"
                 ? "현재 배포 지역 정책으로 호출이 제한되는군."
                 : "서버 지역 정책으로 차단됨.",
           response:
-            character.id === "mika"
+            requestCharacterId === "mika"
               ? `선생님, 지금 서버 지역에서는 AI 호출이 제한돼. 관리자에게 배포 지역 변경이나 모델 전환을 요청해줘.${traceSuffix}`
-              : character.id === "alice"
+              : requestCharacterId === "alice"
                 ? `현재 서버 지역에서는 Gemini API 호출이 제한된다. 관리자에게 배포 지역 변경 또는 모델 전환을 요청해달라.${traceSuffix}`
                 : `지금 서버 지역에서 Gemini 호출 제한됨. 관리자에게 지역/모델 변경 요청해줘.${traceSuffix}`,
         }
@@ -786,15 +840,15 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
         parsed = {
           emotion: "normal",
           inner_heart:
-            character.id === "mika"
+            requestCharacterId === "mika"
               ? "응답 포맷이 깨져서 지금은 안전하게 멈추는 게 맞아..."
-              : character.id === "alice"
+              : requestCharacterId === "alice"
                 ? "응답 계약(JSON) 파싱에 실패했다."
                 : "응답 포맷 깨짐.",
           response:
-            character.id === "mika"
+            requestCharacterId === "mika"
               ? `선생님, 방금 AI 응답 형식이 깨져서 처리에 실패했어. 한 번만 다시 시도해줘.${traceSuffix}`
-              : character.id === "alice"
+              : requestCharacterId === "alice"
                 ? `AI 응답 형식 오류로 처리에 실패했다. 잠시 후 다시 시도해달라.${traceSuffix}`
                 : `AI 응답 형식 오류로 처리 실패. 잠깐 뒤에 다시 시도해줘.${traceSuffix}`,
         }
@@ -803,9 +857,9 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
           emotion: "normal",
           inner_heart: "서버 쪽에 문제가 있는 것 같다...",
           response:
-            character.id === "mika"
+            requestCharacterId === "mika"
               ? `선생님, 서버 API 키 설정에 문제가 있어 보여. 관리자에게 확인 요청해줘.${traceSuffix}`
-              : character.id === "alice"
+              : requestCharacterId === "alice"
                 ? `API 키 설정 오류로 요청이 거절되었다. 관리자에게 확인을 요청해달라.${traceSuffix}`
                 : `서버 API 키 설정 문제로 요청 실패. 관리자 확인 필요.${traceSuffix}`,
         }
@@ -814,9 +868,9 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
           emotion: "normal",
           inner_heart: "시간이 오래 걸리는구나...",
           response:
-            character.id === "mika"
+            requestCharacterId === "mika"
               ? `선생님, 응답 시간이 초과됐어. 잠깐 뒤에 다시 시도해줘.${traceSuffix}`
-              : character.id === "alice"
+              : requestCharacterId === "alice"
                 ? `응답 지연으로 요청이 종료되었다. 잠시 후 다시 시도해달라.${traceSuffix}`
                 : `응답 시간 초과로 요청 종료. 잠깐 뒤 다시 시도해줘.${traceSuffix}`,
         }
@@ -825,9 +879,9 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
           emotion: "normal",
           inner_heart: "서버 설정 이슈가 있는 것 같다.",
           response:
-            character.id === "mika"
+            requestCharacterId === "mika"
               ? `선생님, 서버 설정 문제로 답장을 만들지 못했어. 관리자 확인이 필요해.${traceSuffix}`
-              : character.id === "alice"
+              : requestCharacterId === "alice"
                 ? `서버 설정 문제로 요청에 실패했다. 관리자 확인이 필요하다.${traceSuffix}`
                 : `서버 설정 문제로 요청 실패. 관리자 확인 필요.${traceSuffix}`,
         }
@@ -835,15 +889,15 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
         parsed = {
           emotion: "normal",
           inner_heart:
-            character.id === "mika"
+            requestCharacterId === "mika"
               ? "뭔가 이상한데... 선생님한테는 보여주고 싶지 않은데..."
-              : character.id === "alice"
+              : requestCharacterId === "alice"
                 ? "오류가 발생했다. 다시 시도해보자."
                 : "어? 뭔가 이상한데...",
           response:
-            character.id === "mika"
+            requestCharacterId === "mika"
               ? `선생님, 예상치 못한 오류가 발생했어. 잠시 후 다시 시도해줘.${traceSuffix}`
-              : character.id === "alice"
+              : requestCharacterId === "alice"
                 ? `예상치 못한 오류가 발생했다. 잠시 후 다시 시도해달라.${traceSuffix}`
                 : `예상치 못한 오류 발생. 잠시 후 다시 시도해줘.${traceSuffix}`,
         }
@@ -856,11 +910,15 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
       }
       setMessages((prev) => [...prev, errorMessage])
     } finally {
-      setIsLoading(false)
+      clearTimeout(timeoutId)
+      if (inFlightRequestRef.current?.id === requestId) {
+        inFlightRequestRef.current = null
+        setIsLoading(false)
+      }
     }
   }
 
-  const saveMessage = async (msg: Message) => {
+  const saveMessage = async (msg: Message, targetCharacterId: string = character.id) => {
     if (!user || !isSupabaseConfigured()) {
       console.log("Cannot save message: no user or supabase not configured")
       return
@@ -879,7 +937,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
         .from('chat_messages')
         .insert({
           user_id: user.id,
-          character_id: character.id,
+          character_id: targetCharacterId,
           role: msg.role,
           content: contentToSave,
         })

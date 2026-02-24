@@ -140,6 +140,7 @@ function App() {
         ) : (
           character && (
             <ChatView
+              key={character.id}
               character={character}
               onCharacterChange={handleCharacterChange}
               user={user}

@@ -383,12 +383,14 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
                       className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                       style={{ objectPosition: meta.heroObjectPosition || "center top" }}
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/86 via-black/35 to-transparent" />
-                    <div className="absolute inset-x-0 bottom-0 space-y-2 p-5 text-white">
-                      <p className="text-[11px] font-semibold tracking-[0.14em] text-white/85">{heroSignals[index] ?? "추천 캐릭터"}</p>
+                    <div className="absolute inset-0 bg-[linear-gradient(112deg,rgba(11,10,14,0.82)_10%,rgba(11,10,14,0.5)_44%,rgba(11,10,14,0.22)_72%,rgba(11,10,14,0.08)_100%),linear-gradient(to_top,rgba(6,6,8,0.9)_0%,rgba(6,6,8,0.56)_46%,rgba(6,6,8,0.08)_82%)]" />
+                    <div className="absolute inset-x-0 bottom-0 space-y-2 p-5 text-white [text-shadow:0_2px_10px_rgba(0,0,0,0.82)]">
+                      <p className="inline-flex w-fit rounded-full bg-black/36 px-2 py-1 text-[11px] font-semibold tracking-[0.14em] text-white/92">
+                        {heroSignals[index] ?? "추천 캐릭터"}
+                      </p>
                       <h3 className="text-[1.7rem] font-black leading-tight">{char.name}</h3>
-                      <p className="line-clamp-2 text-sm text-white/86">{meta.heroQuote ?? meta.summary}</p>
-                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-white/90">
+                      <p className="line-clamp-2 text-sm text-white/92">{meta.heroQuote ?? meta.summary}</p>
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-white/94">
                         캐릭터 살펴보기
                         <ArrowRight className="h-3.5 w-3.5" />
                       </span>
@@ -478,7 +480,7 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
       </main>
 
       <footer className="relative z-10 px-4 pb-6 text-center text-xs text-[#7f776c]">
-        © 2026 V-MATE. All rights reserved.
+        © V-MATE. All Rights Reserved.
       </footer>
 
       {selectedCharacter && selectedCharacterMeta && (
