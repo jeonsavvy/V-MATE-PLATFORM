@@ -28,6 +28,9 @@
     "GEMINI_CONTEXT_CACHE_AUTO_CREATE": "true",
     "ALLOWED_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173,https://v-mate.jeonsavvy.workers.dev",
     "ALLOW_ALL_ORIGINS": "false",
+    "ALLOW_NON_BROWSER_ORIGIN": "false",
+    "REQUEST_BODY_MAX_BYTES": "32768",
+    "TRUST_X_FORWARDED_FOR": "false",
     "RATE_LIMIT_WINDOW_MS": "60000",
     "RATE_LIMIT_MAX_REQUESTS": "30"
   },

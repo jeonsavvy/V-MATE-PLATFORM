@@ -2,8 +2,8 @@ import { useState, useEffect, lazy, Suspense } from "react"
 import { Toaster } from "@/components/ui/sonner"
 import { CHARACTERS } from "@/lib/data"
 import { User } from "@supabase/supabase-js"
-import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import type { Character } from "@/lib/data"
+import { devError } from "@/lib/logger"
 
 const Home = lazy(() => import("@/components/Home").then((module) => ({ default: module.Home })))
 const ChatView = lazy(() => import("@/components/ChatView").then((module) => ({ default: module.ChatView })))
@@ -72,26 +72,47 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!isSupabaseConfigured()) {
-      return
+    let mounted = true
+    let unsubscribe: (() => void) | null = null
+
+    const bindAuthListener = async () => {
+      const module = await import("@/lib/supabase")
+      if (!module.isSupabaseConfigured()) {
+        return
+      }
+
+      try {
+        const {
+          data: { session },
+        } = await module.supabase.auth.getSession()
+
+        if (mounted) {
+          setUser(session?.user ?? null)
+        }
+      } catch (error) {
+        devError("Failed to get session:", error)
+      }
+
+      try {
+        const {
+          data: { subscription },
+        } = module.supabase.auth.onAuthStateChange((_event, session) => {
+          if (mounted) {
+            setUser(session?.user ?? null)
+          }
+        })
+
+        unsubscribe = () => subscription.unsubscribe()
+      } catch (error) {
+        devError("Failed to set up auth state change listener:", error)
+      }
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-    }).catch((error) => {
-      console.error("Failed to get session:", error)
-    })
+    void bindAuthListener()
 
-    try {
-      const {
-        data: { subscription },
-      } = supabase.auth.onAuthStateChange((_event, session) => {
-        setUser(session?.user ?? null)
-      })
-
-      return () => subscription.unsubscribe()
-    } catch (error) {
-      console.error("Failed to set up auth state change listener:", error)
+    return () => {
+      mounted = false
+      unsubscribe?.()
     }
   }, [])
 

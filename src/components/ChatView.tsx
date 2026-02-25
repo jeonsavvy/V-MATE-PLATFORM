@@ -6,7 +6,25 @@ import { cn } from "@/lib/utils"
 import { Send, ArrowLeft, Trash2, PanelRightOpen, PanelRightClose, Sparkles, Heart } from "lucide-react"
 import { CHARACTER_UI_META } from "@/lib/character-ui"
 import { User as SupabaseUser } from "@supabase/supabase-js"
-import { supabase, isSupabaseConfigured } from "@/lib/supabase"
+import { useChatSession } from "@/hooks/useChatSession"
+import {
+  type ChatApiError,
+  CONFIGURATION_ERROR_CODES,
+  NETWORK_ERROR_CODES,
+  sendChatMessage,
+} from "@/lib/chat/apiClient"
+import {
+  clearChatHistory,
+  getPromptCacheKey,
+  loadChatHistory,
+  loadHistoryPreviews as loadHistoryPreviewsFromRepository,
+  saveChatMessage,
+  saveGuestHistory,
+  toPreviewText,
+  toTruncatedPreview,
+  type HistoryPreview,
+} from "@/lib/chat/historyRepository"
+import { devError } from "@/lib/logger"
 
 interface ChatViewProps {
   character: Character
@@ -14,108 +32,6 @@ interface ChatViewProps {
   user: SupabaseUser | null
   onBack: () => void
 }
-
-interface HistoryPreview {
-  text: string
-  updatedAt: string | null
-  hasHistory: boolean
-}
-
-const toPreviewText = (content: Message["content"]): string => {
-  if (typeof content === "string") {
-    return content
-  }
-  return typeof content.response === "string" ? content.response : ""
-}
-
-const toTruncatedPreview = (text: string, max = 48): string => {
-  const normalized = String(text || "").replace(/\s+/g, " ").trim()
-  if (normalized.length <= max) {
-    return normalized
-  }
-  return `${normalized.slice(0, max)}…`
-}
-
-const parseSavedContentToPreview = (content: unknown): string => {
-  if (typeof content !== "string") {
-    if (content && typeof content === "object" && typeof (content as AIResponse).response === "string") {
-      return (content as AIResponse).response
-    }
-    return ""
-  }
-
-  try {
-    const parsed = JSON.parse(content)
-    if (typeof parsed === "string") {
-      return parsed
-    }
-    if (parsed && typeof parsed === "object" && typeof parsed.response === "string") {
-      return parsed.response
-    }
-    return content
-  } catch {
-    return content
-  }
-}
-
-const resolveChatApiUrl = (): string => {
-  const baseUrl = String(import.meta.env.VITE_CHAT_API_BASE_URL || "").trim().replace(/\/+$/, "")
-  if (!baseUrl) {
-    return "/api/chat"
-  }
-  return baseUrl.endsWith("/api/chat") ? baseUrl : `${baseUrl}/api/chat`
-}
-
-type ChatApiError = Error & {
-  chatErrorCode?: string
-  chatTraceId?: string
-}
-
-const createChatApiError = (message: string, errorCode?: string, traceId?: string): ChatApiError => {
-  const error = new Error(message) as ChatApiError
-  if (errorCode) {
-    error.chatErrorCode = errorCode
-  }
-  if (traceId) {
-    error.chatTraceId = traceId
-  }
-  return error
-}
-
-const mapChatApiErrorMessage = (errorCode: string, fallbackMessage: string) => {
-  switch (errorCode) {
-    case "UPSTREAM_CONNECTION_FAILED":
-    case "UPSTREAM_TIMEOUT":
-    case "FUNCTION_BUDGET_TIMEOUT":
-    case "UPSTREAM_EMPTY_RESPONSE":
-    case "UPSTREAM_EMPTY_RESPONSE_MAX_TOKENS":
-      return "AI 서버 연결이 불안정합니다. 잠시 후 다시 시도해주세요."
-    case "UPSTREAM_LOCATION_UNSUPPORTED":
-      return "현재 서버 지역에서는 Gemini API를 사용할 수 없습니다. 관리자에게 문의해주세요."
-    case "UPSTREAM_INVALID_RESPONSE":
-    case "UPSTREAM_INVALID_FORMAT":
-      return "AI 응답 형식이 불안정합니다. 잠시 후 다시 시도해주세요."
-    default:
-      return fallbackMessage
-  }
-}
-
-const NETWORK_ERROR_CODES = new Set([
-  "CLIENT_NETWORK_ERROR",
-  "CLIENT_TIMEOUT",
-  "UPSTREAM_CONNECTION_FAILED",
-  "UPSTREAM_TIMEOUT",
-  "FUNCTION_BUDGET_TIMEOUT",
-  "UPSTREAM_EMPTY_RESPONSE",
-  "UPSTREAM_EMPTY_RESPONSE_MAX_TOKENS",
-])
-
-const CONFIGURATION_ERROR_CODES = new Set([
-  "UPSTREAM_LOCATION_UNSUPPORTED",
-  "UPSTREAM_INVALID_FORMAT",
-  "UPSTREAM_INVALID_RESPONSE",
-  "UPSTREAM_MODEL_ERROR",
-])
 
 const EMOTION_LABELS: Record<AIResponse["emotion"], string> = {
   normal: "기본 표정",
@@ -125,32 +41,6 @@ const EMOTION_LABELS: Record<AIResponse["emotion"], string> = {
 }
 
 const QUICK_REPLY_TEMPLATES = ["계속 말해줘", "조금 더 자세히 알려줘", "다른 전개로 이어가줘"]
-
-const systemPromptCache = new Map<string, string>()
-
-const SYSTEM_PROMPT_LOADERS: Record<string, () => Promise<string>> = {
-  mika: async () => (await import("@/lib/prompts/mika")).buildMikaPrompt(),
-  alice: async () => (await import("@/lib/prompts/alice")).buildAlicePrompt(),
-  kael: async () => (await import("@/lib/prompts/kael")).buildKaelPrompt(),
-}
-
-const resolveSystemPrompt = async (characterId: string): Promise<string> => {
-  if (systemPromptCache.has(characterId)) {
-    return systemPromptCache.get(characterId) || ""
-  }
-
-  const loader = SYSTEM_PROMPT_LOADERS[characterId]
-  if (!loader) {
-    return ""
-  }
-
-  const loadedPrompt = await loader()
-  const normalizedPrompt = String(loadedPrompt || "").trim()
-  if (normalizedPrompt) {
-    systemPromptCache.set(characterId, normalizedPrompt)
-  }
-  return normalizedPrompt
-}
 
 export function ChatView({ character, onCharacterChange, user, onBack }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([
@@ -173,15 +63,11 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
   const messageInputRef = useRef<HTMLTextAreaElement>(null)
   const isLoadingHistoryRef = useRef(false)
   const messagesRef = useRef(messages)
-  const chatApiUrlRef = useRef(resolveChatApiUrl())
-  const activeCharacterIdRef = useRef(character.id)
-  const requestCounterRef = useRef(0)
-  const inFlightRequestRef = useRef<{
-    id: number
-    characterId: string
-    controller: AbortController
-  } | null>(null)
-  const getPromptCacheKey = (charId: string) => `gemini_cached_content_${charId}`
+  const {
+    beginRequest,
+    isRequestStale,
+    finishRequest,
+  } = useChatSession(character.id)
   const resolveEmotionImage = (emotion?: AIResponse["emotion"]) => {
     if (emotion === "confused" && character.images.confused) {
       return character.images.confused
@@ -200,327 +86,69 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
   }, [messages])
 
   useEffect(() => {
-    void resolveSystemPrompt(character.id)
-  }, [character.id])
-
-  useEffect(() => {
-    activeCharacterIdRef.current = character.id
-    if (inFlightRequestRef.current) {
-      inFlightRequestRef.current.controller.abort()
-      inFlightRequestRef.current = null
-    }
     setIsLoading(false)
   }, [character.id])
-
-  useEffect(() => {
-    return () => {
-      if (inFlightRequestRef.current) {
-        inFlightRequestRef.current.controller.abort()
-      }
-    }
-  }, [])
 
   useEffect(() => {
     setIsInfoPanelOpen(false)
   }, [character.id])
 
   useEffect(() => {
+    let isMounted = true
+
     const loadHistory = async () => {
       isLoadingHistoryRef.current = true
 
       try {
-        if (!user) {
-          const localKey = `chat_history_${character.id}`
-          const saved = localStorage.getItem(localKey)
-          if (saved) {
-            try {
-              const parsed = JSON.parse(saved)
-              console.log(`Loaded ${parsed.length} messages from localStorage for character ${character.id}`)
-              if (parsed.length === 0 || parsed[0].id !== "greeting") {
-                setMessages([
-                  {
-                    id: "greeting",
-                    role: "assistant",
-                    content: {
-                      emotion: "normal",
-                      inner_heart: "",
-                      response: character.greeting,
-                    },
-                  },
-                  ...parsed,
-                ])
-              } else {
-                const updatedMessages = [...parsed]
-                updatedMessages[0] = {
-                  id: "greeting",
-                  role: "assistant",
-                  content: {
-                    emotion: "normal",
-                    inner_heart: "",
-                    response: character.greeting,
-                  },
-                }
-                setMessages(updatedMessages)
-              }
-            } catch (e) {
-              console.error("Failed to parse local history", e)
-              setMessages([
-                {
-                  id: "greeting",
-                  role: "assistant",
-                  content: {
-                    emotion: "normal",
-                    inner_heart: "",
-                    response: character.greeting,
-                  },
-                },
-              ])
-            }
-          } else {
-            console.log(`No saved messages found in localStorage for character ${character.id}`)
-            setMessages([
-              {
-                id: "greeting",
-                role: "assistant",
-                content: {
-                  emotion: "normal",
-                  inner_heart: "",
-                  response: character.greeting,
-                },
-              },
-            ])
-          }
-        } else {
-          if (!isSupabaseConfigured()) {
-            console.warn("Supabase is not configured, cannot load chat history for logged in user")
-            setMessages([
-              {
-                id: "greeting",
-                role: "assistant",
-                content: {
-                  emotion: "normal",
-                  inner_heart: "",
-                  response: character.greeting,
-                },
-              },
-            ])
-            return
-          }
-
-          const { data: { session } } = await supabase.auth.getSession()
-          if (!session) {
-            console.warn("No session found, cannot load chat history for logged in user")
-            setMessages([
-              {
-                id: "greeting",
-                role: "assistant",
-                content: {
-                  emotion: "normal",
-                  inner_heart: "",
-                  response: character.greeting,
-                },
-              },
-            ])
-            return
-          }
-
-          console.log(`Loading chat history for user ${user.id}, character ${character.id}`)
-          const { data, error } = await supabase
-            .from('chat_messages')
-            .select('*')
-            .eq('user_id', user.id)
-            .eq('character_id', character.id)
-            .order('created_at', { ascending: true })
-
-          if (error) {
-            console.error("Supabase query error:", error)
-            throw error
-          }
-
-          console.log(`Loaded ${data?.length || 0} messages from Supabase for user ${user.id}, character ${character.id}`)
-          if (data && data.length > 0) {
-            console.log("Raw data from Supabase:", data)
-          }
-
-          if (data && data.length > 0) {
-            const loadedMessages: Message[] = data.map((msg: any) => {
-              try {
-                const content = typeof msg.content === 'string' ? JSON.parse(msg.content) : msg.content
-                return {
-                  id: msg.id,
-                  role: msg.role as "user" | "assistant",
-                  content: content,
-                  timestamp: msg.created_at,
-                }
-              } catch (e) {
-                console.error("Failed to parse message content:", msg, e)
-                return {
-                  id: msg.id,
-                  role: msg.role as "user" | "assistant",
-                  content: typeof msg.content === 'string' ? msg.content : msg.content,
-                  timestamp: msg.created_at,
-                }
-              }
-            })
-
-            console.log(`Parsed ${loadedMessages.length} messages`)
-
-            if (loadedMessages.length === 0 || loadedMessages[0].id !== "greeting") {
-              setMessages([
-                {
-                  id: "greeting",
-                  role: "assistant",
-                  content: {
-                    emotion: "normal",
-                    inner_heart: "",
-                    response: character.greeting,
-                  },
-                },
-                ...loadedMessages,
-              ])
-            } else {
-              const updatedMessages = [...loadedMessages]
-              if (updatedMessages[0]?.id === "greeting") {
-                updatedMessages[0] = {
-                  id: "greeting",
-                  role: "assistant",
-                  content: {
-                    emotion: "normal",
-                    inner_heart: "",
-                    response: character.greeting,
-                  },
-                }
-              }
-              setMessages(updatedMessages)
-            }
-          } else {
-            console.log("No messages found in Supabase, showing greeting only")
-            setMessages([
-              {
-                id: "greeting",
-                role: "assistant",
-                content: {
-                  emotion: "normal",
-                  inner_heart: "",
-                  response: character.greeting,
-                },
-              },
-            ])
-          }
+        const nextMessages = await loadChatHistory({ user, character })
+        if (isMounted) {
+          setMessages(nextMessages)
         }
       } catch (error) {
-        console.error("Failed to load chat history", error)
-        setMessages([
-          {
-            id: "greeting",
-            role: "assistant",
-            content: {
-              emotion: "normal",
-              inner_heart: "",
-              response: character.greeting,
-            },
-          },
-        ])
+        devError("Failed to load chat history", error)
       } finally {
         isLoadingHistoryRef.current = false
       }
     }
 
-    loadHistory()
-  }, [user, character.id])
+    void loadHistory()
+
+    return () => {
+      isMounted = false
+    }
+  }, [user, character])
 
   useEffect(() => {
-    const loadHistoryPreviews = async () => {
-      const initialPreviews: Record<string, HistoryPreview> = {}
+    let isMounted = true
 
-      if (!user) {
-        Object.values(CHARACTERS).forEach((char) => {
-          const localKey = `chat_history_${char.id}`
-          const saved = localStorage.getItem(localKey)
-          if (!saved) return
-
-          try {
-            const parsed = JSON.parse(saved) as Message[]
-            const last = parsed[parsed.length - 1]
-            if (!last) return
-
-            initialPreviews[char.id] = {
-              text: toTruncatedPreview(toPreviewText(last.content)),
-              updatedAt: last.timestamp || null,
-              hasHistory: true,
-            }
-          } catch (error) {
-            console.error(`Failed to parse preview history for ${char.id}`, error)
-          }
-        })
-
-        setHistoryPreviews(initialPreviews)
-        return
-      }
-
-      if (!isSupabaseConfigured()) {
-        setHistoryPreviews(initialPreviews)
-        return
-      }
-
+    const loadPreviews = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session) {
-          setHistoryPreviews(initialPreviews)
-          return
+        const previews = await loadHistoryPreviewsFromRepository({ user })
+        if (isMounted) {
+          setHistoryPreviews(previews)
         }
-
-        const { data, error } = await supabase
-          .from('chat_messages')
-          .select('character_id, content, created_at')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: true })
-
-        if (error) {
-          throw error
-        }
-
-        data?.forEach((row: any) => {
-          const targetCharacterId = String(row.character_id || '')
-          if (!CHARACTERS[targetCharacterId]) return
-
-          const preview = toTruncatedPreview(parseSavedContentToPreview(row.content))
-          if (!preview) return
-
-          initialPreviews[targetCharacterId] = {
-            text: preview,
-            updatedAt: row.created_at || null,
-            hasHistory: true,
-          }
-        })
-
-        setHistoryPreviews(initialPreviews)
       } catch (error) {
-        console.error("Failed to load history previews", error)
-        setHistoryPreviews(initialPreviews)
+        devError("Failed to load history previews", error)
+        if (isMounted) {
+          setHistoryPreviews({})
+        }
       }
     }
 
-    loadHistoryPreviews()
+    void loadPreviews()
+
+    return () => {
+      isMounted = false
+    }
   }, [user])
 
   useEffect(() => {
     if (isLoadingHistoryRef.current) {
-      console.log("Skipping save: history is loading")
       return
     }
 
-    if (!user && messages.length > 1) {
-      const localKey = `chat_history_${character.id}`
-      const messagesToSave = messages.filter(msg => msg.id !== "greeting")
-      if (messagesToSave.length > 0) {
-        try {
-          localStorage.setItem(localKey, JSON.stringify(messagesToSave))
-          console.log(`Saved ${messagesToSave.length} messages to localStorage for character ${character.id}`)
-        } catch (e) {
-          console.error("Failed to save to localStorage", e)
-        }
-      }
+    if (!user) {
+      saveGuestHistory(character.id, messages)
     }
   }, [messages, user, character.id])
 
@@ -528,17 +156,7 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
     if (user) return // 로그인 사용자는 제외
 
     const handleBeforeUnload = () => {
-      if (messagesRef.current.length > 1) {
-        const localKey = `chat_history_${character.id}`
-        const messagesToSave = messagesRef.current.filter(msg => msg.id !== "greeting")
-        if (messagesToSave.length > 0) {
-          try {
-            localStorage.setItem(localKey, JSON.stringify(messagesToSave))
-          } catch (e) {
-            console.error("Failed to save to localStorage on unload", e)
-          }
-        }
-      }
+      saveGuestHistory(character.id, messagesRef.current)
     }
 
     window.addEventListener("beforeunload", handleBeforeUnload)
@@ -598,20 +216,8 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
     if (!text || isLoading) return
 
     const requestCharacterId = character.id
-    const requestId = requestCounterRef.current + 1
-    requestCounterRef.current = requestId
-    const controller = new AbortController()
+    const { requestId, controller } = beginRequest(requestCharacterId)
     const timeoutId = setTimeout(() => controller.abort(), 17000)
-
-    inFlightRequestRef.current = {
-      id: requestId,
-      characterId: requestCharacterId,
-      controller,
-    }
-
-    const isRequestStale = () =>
-      activeCharacterIdRef.current !== requestCharacterId ||
-      inFlightRequestRef.current?.id !== requestId
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -621,7 +227,11 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
     setMessages((prev) => [...prev, userMessage])
 
     if (user) {
-      void saveMessage(userMessage, requestCharacterId)
+      void saveChatMessage({
+        user,
+        message: userMessage,
+        characterId: requestCharacterId,
+      })
     }
 
     setInputValue("")
@@ -632,167 +242,61 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
         role: msg.role,
         content: typeof msg.content === "string" ? msg.content : msg.content.response,
       }))
-      const systemPrompt = await resolveSystemPrompt(requestCharacterId)
-      if (!systemPrompt) {
-        throw createChatApiError("캐릭터 시스템 설정을 불러오지 못했습니다. 다시 시도해주세요.", "CLIENT_PROMPT_LOAD_FAILED")
-      }
 
-      if (isRequestStale()) {
+      if (isRequestStale(requestId, requestCharacterId)) {
         return
       }
 
-      let response
       const cacheStorageKey = getPromptCacheKey(requestCharacterId)
-      const cachedContent = localStorage.getItem(cacheStorageKey)
-      try {
-        response = await fetch(chatApiUrlRef.current, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            characterId: requestCharacterId,
-            systemPrompt,
-            userMessage: text,
-            messageHistory: messageHistory.slice(1), // greeting 제외
-            cachedContent: cachedContent || undefined,
-          }),
-          signal: controller.signal,
-        })
-      } catch (fetchError: any) {
-        if (fetchError.name === "AbortError") {
-          if (isRequestStale()) {
-            return
-          }
-          throw createChatApiError("응답 시간이 초과되었습니다. 네트워크 연결을 확인해주세요.", "CLIENT_TIMEOUT")
-        } else if (fetchError.message.includes("Failed to fetch")) {
-          throw createChatApiError("서버에 연결할 수 없습니다. 인터넷 연결을 확인해주세요.", "CLIENT_NETWORK_ERROR")
-        }
-        throw fetchError
-      }
+      const cachedContent = localStorage.getItem(cacheStorageKey) || undefined
+      const { message, cachedContent: nextCachedContent } = await sendChatMessage({
+        payload: {
+          characterId: requestCharacterId as "mika" | "alice" | "kael",
+          userMessage: text,
+          messageHistory: messageHistory.slice(1), // greeting 제외
+          cachedContent,
+        },
+        signal: controller.signal,
+      })
 
-      if (isRequestStale()) {
+      if (isRequestStale(requestId, requestCharacterId)) {
         return
       }
 
-      if (!response.ok) {
-        let errorMessage = "서버 오류가 발생했습니다."
-        let errorCode = ""
-        let traceId = String(response.headers.get("x-v-mate-trace-id") || "").trim()
-        try {
-          const errorData = await response.json()
-          errorMessage = errorData.error || errorMessage
-          errorCode = errorData.error_code || ""
-          if (typeof errorData.trace_id === "string" && errorData.trace_id.trim()) {
-            traceId = errorData.trace_id.trim()
-          }
-          if (errorMessage.includes("API key") || errorMessage.includes("GOOGLE_API_KEY")) {
-            errorMessage = "API 키가 설정되지 않았거나 만료되었습니다. 관리자에게 문의해주세요."
-          } else if (
-            errorCode === "UPSTREAM_LOCATION_UNSUPPORTED" ||
-            errorMessage.includes("location is not supported")
-          ) {
-            errorMessage = "현재 서버 지역에서는 Gemini API를 사용할 수 없습니다. 관리자에게 문의해주세요."
-          } else if (
-            errorCode === "UPSTREAM_CONNECTION_FAILED" ||
-            errorCode === "UPSTREAM_TIMEOUT" ||
-            errorCode === "FUNCTION_BUDGET_TIMEOUT" ||
-            errorMessage.includes("Failed to connect to Gemini API") ||
-            errorMessage.includes("temporarily unavailable") ||
-            errorMessage.includes("overloaded")
-          ) {
-            errorMessage = "현재 AI 서버 연결이 불안정합니다. 잠시 후 다시 시도해주세요."
-          }
-        } catch (e) {
-          if (response.status === 500) {
-            errorMessage = "서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
-          } else if (response.status === 503) {
-            errorMessage = "서비스가 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요."
-          }
-        }
-        errorMessage = mapChatApiErrorMessage(errorCode, errorMessage)
-        throw createChatApiError(errorMessage, errorCode || `HTTP_${response.status}`, traceId)
-      }
-
-      const data = await response.json()
-      const traceId = (
-        typeof data.trace_id === "string" && data.trace_id.trim()
-          ? data.trace_id
-          : String(response.headers.get("x-v-mate-trace-id") || "").trim()
-      )
-      if (data.error) {
-        const errorCode = typeof data.error_code === "string" ? data.error_code : ""
-        throw createChatApiError(
-          mapChatApiErrorMessage(errorCode, data.error),
-          errorCode || "UPSTREAM_RESPONSE_ERROR",
-          traceId,
-        )
-      }
-      if (typeof data.error_code === "string" && data.error_code.trim()) {
-        throw createChatApiError(
-          mapChatApiErrorMessage(data.error_code, "AI 서버 처리 중 오류가 발생했습니다."),
-          data.error_code,
-          traceId,
-        )
-      }
-      if (Object.prototype.hasOwnProperty.call(data, "cachedContent")) {
-        if (typeof data.cachedContent === "string" && data.cachedContent.trim()) {
-          localStorage.setItem(cacheStorageKey, data.cachedContent.trim())
-        } else if (data.cachedContent === null) {
-          localStorage.removeItem(cacheStorageKey)
-        }
-      }
-      if (!data.text) {
-        throw createChatApiError("서버로부터 응답을 받지 못했습니다. 다시 시도해주세요.", "UPSTREAM_EMPTY_BODY", traceId)
-      }
-
-      const rawText = data.text
-      const jsonStr = rawText.replace(/```json/g, "").replace(/```/g, "").trim()
-
-      let parsed: AIResponse
-      try {
-        parsed = JSON.parse(jsonStr)
-        if (!parsed.emotion || !parsed.response) {
-          throw new Error("응답 형식이 올바르지 않습니다.")
-        }
-        if (typeof parsed.narration === "string") {
-          parsed.narration = parsed.narration.trim()
-        }
-      } catch (parseError) {
-        throw createChatApiError(
-          "AI 응답 형식이 올바르지 않습니다. 잠시 후 다시 시도해주세요.",
-          "UPSTREAM_INVALID_FORMAT",
-          traceId,
-        )
-      }
-
-      if (isRequestStale()) {
-        return
+      if (nextCachedContent) {
+        localStorage.setItem(cacheStorageKey, nextCachedContent)
+      } else {
+        localStorage.removeItem(cacheStorageKey)
       }
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: parsed,
+        content: message,
       }
       setMessages((prev) => [...prev, assistantMessage])
 
       if (user) {
-        void saveMessage(assistantMessage, requestCharacterId)
+        void saveChatMessage({
+          user,
+          message: assistantMessage,
+          characterId: requestCharacterId,
+        })
       }
-    } catch (err: any) {
-      if (isRequestStale()) {
+    } catch (error) {
+      if (isRequestStale(requestId, requestCharacterId)) {
         return
       }
 
       let parsed: AIResponse
-      const errorCode = typeof err?.chatErrorCode === "string" ? err.chatErrorCode : ""
-      const traceId = typeof err?.chatTraceId === "string" ? err.chatTraceId : ""
-      const errorMsg = err.message || "알 수 없는 오류가 발생했습니다."
+      const typedError = error as ChatApiError
+      const errorCode = typeof typedError?.chatErrorCode === "string" ? typedError.chatErrorCode : ""
+      const traceId = typeof typedError?.chatTraceId === "string" ? typedError.chatTraceId : ""
+      const errorMsg = typedError instanceof Error ? typedError.message : "알 수 없는 오류가 발생했습니다."
       const traceSuffix = traceId ? ` (trace: ${traceId})` : ""
 
       if (errorCode) {
-        console.error("[V-MATE] Chat request failed", {
+        devError("[V-MATE] Chat request failed", {
           characterId: requestCharacterId,
           errorCode,
           traceId: traceId || null,
@@ -911,46 +415,11 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
       setMessages((prev) => [...prev, errorMessage])
     } finally {
       clearTimeout(timeoutId)
-      if (inFlightRequestRef.current?.id === requestId) {
-        inFlightRequestRef.current = null
+      const shouldUnsetLoading = !isRequestStale(requestId, requestCharacterId)
+      finishRequest(requestId)
+      if (shouldUnsetLoading) {
         setIsLoading(false)
       }
-    }
-  }
-
-  const saveMessage = async (msg: Message, targetCharacterId: string = character.id) => {
-    if (!user || !isSupabaseConfigured()) {
-      console.log("Cannot save message: no user or supabase not configured")
-      return
-    }
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        console.log("Cannot save message: no session")
-        return
-      }
-
-      const contentToSave = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
-
-      const { data, error } = await supabase
-        .from('chat_messages')
-        .insert({
-          user_id: user.id,
-          character_id: targetCharacterId,
-          role: msg.role,
-          content: contentToSave,
-        })
-        .select()
-
-      if (error) {
-        console.error("Failed to save message to Supabase:", error)
-        throw error
-      }
-
-      console.log("Message saved successfully:", data?.[0]?.id)
-    } catch (error) {
-      console.error("Failed to save message", error)
     }
   }
 
@@ -959,28 +428,16 @@ export function ChatView({ character, onCharacterChange, user, onBack }: ChatVie
       return
     }
 
-    if (user) {
-      if (isSupabaseConfigured()) {
-        try {
-          const { data: { session } } = await supabase.auth.getSession()
-          if (session) {
-            const { error } = await supabase
-              .from('chat_messages')
-              .delete()
-              .eq('user_id', user.id)
-              .eq('character_id', character.id)
-
-            if (error) throw error
-          }
-        } catch (error) {
-          console.error("Failed to clear chat", error)
-          alert("대화 초기화에 실패했습니다. 다시 시도해주세요.")
-          return
-        }
-      }
-    } else {
-      const localKey = `chat_history_${character.id}`
-      localStorage.removeItem(localKey)
+    try {
+      await clearChatHistory({
+        user,
+        characterId: character.id,
+      })
+      localStorage.removeItem(getPromptCacheKey(character.id))
+    } catch (error) {
+      devError("Failed to clear chat", error)
+      alert("대화 초기화에 실패했습니다. 다시 시도해주세요.")
+      return
     }
 
     setMessages([

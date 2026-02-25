@@ -4,9 +4,9 @@ import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import { Label } from "./ui/label"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs"
-import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
+import { devError } from "@/lib/logger"
 
 interface AuthDialogProps {
   open: boolean
@@ -24,10 +24,19 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
   const [confirmPassword, setConfirmPassword] = useState("")
   const [name, setName] = useState("")
 
+  const getSupabaseClient = async () => {
+    const module = await import("@/lib/supabase")
+    if (!module.isSupabaseConfigured()) {
+      return null
+    }
+    return module.supabase
+  }
+
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
-    
-    if (!isSupabaseConfigured()) {
+
+    const supabase = await getSupabaseClient()
+    if (!supabase) {
       toast.error("Supabase가 설정되지 않았습니다. 환경 변수를 확인해주세요.")
       return
     }
@@ -56,8 +65,9 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
-    
-    if (!isSupabaseConfigured()) {
+
+    const supabase = await getSupabaseClient()
+    if (!supabase) {
       toast.error("Supabase가 설정되지 않았습니다. 환경 변수를 확인해주세요.")
       return
     }
@@ -84,7 +94,7 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
       if (error) {
         if (error.message.includes('secret') || error.message.includes('Forbidden')) {
           toast.error("Supabase 설정 오류입니다. 관리자에게 문의해주세요.")
-          console.error("Supabase auth error:", error)
+          devError("Supabase auth error:", error)
           return
         }
         throw error
@@ -109,7 +119,7 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
         }
       }
     } catch (error: any) {
-      console.error("Sign up error:", error)
+      devError("Sign up error:", error)
       toast.error(error.message || "회원가입에 실패했습니다")
     } finally {
       setIsLoading(false)
@@ -117,7 +127,8 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
   }
 
   const handleResetPassword = async () => {
-    if (!isSupabaseConfigured()) {
+    const supabase = await getSupabaseClient()
+    if (!supabase) {
       toast.error("Supabase가 설정되지 않았습니다. 환경 변수를 확인해주세요.")
       return
     }

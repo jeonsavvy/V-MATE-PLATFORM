@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react"
-import { Character, CHARACTERS, Message } from "@/lib/data"
+import { Character, CHARACTERS } from "@/lib/data"
 import { CHARACTER_FILTERS, CHARACTER_UI_META, CharacterFilter } from "@/lib/character-ui"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import { Search, LogOut, Sparkles, ArrowRight, Flame, Clock3 } from "lucide-react"
 import { User as SupabaseUser } from "@supabase/supabase-js"
-import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { toast } from "sonner"
+import { loadRecentChats as loadRecentChatsFromRepository, type RecentChatItem } from "@/lib/chat/historyRepository"
+import { devError } from "@/lib/logger"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,46 +22,6 @@ interface HomeProps {
   onCharacterSelect: (character: Character) => void
   user: SupabaseUser | null
   onAuthRequest: () => void
-}
-
-interface RecentChatItem {
-  characterId: string
-  preview: string
-  updatedAt: string | null
-}
-
-const toPreviewText = (content: Message["content"]): string => {
-  if (typeof content === "string") {
-    return content
-  }
-  return typeof content.response === "string" ? content.response : ""
-}
-
-const parseSavedContentToPreview = (content: unknown): string => {
-  if (typeof content !== "string") {
-    if (content && typeof content === "object" && typeof (content as any).response === "string") {
-      return (content as any).response
-    }
-    return ""
-  }
-
-  try {
-    const parsed = JSON.parse(content)
-    if (typeof parsed === "string") return parsed
-    if (parsed && typeof parsed === "object" && typeof parsed.response === "string") {
-      return parsed.response
-    }
-    return content
-  } catch {
-    return content
-  }
-}
-
-const truncatePreview = (text: string, max = 42): string => {
-  const normalized = String(text || "").replace(/\s+/g, " ").trim()
-  if (!normalized) return ""
-  if (normalized.length <= max) return normalized
-  return `${normalized.slice(0, max)}…`
 }
 
 const formatRelativeTime = (updatedAt: string | null): string => {
@@ -95,86 +56,28 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
   const characters = useMemo(() => Object.values(CHARACTERS), [])
 
   useEffect(() => {
+    let isMounted = true
+
     const loadRecentChats = async () => {
-      if (!user) {
-        const localItems: RecentChatItem[] = []
-        characters.forEach((char) => {
-          const localKey = `chat_history_${char.id}`
-          const saved = localStorage.getItem(localKey)
-          if (!saved) return
-
-          try {
-            const parsed = JSON.parse(saved) as Message[]
-            if (!Array.isArray(parsed) || parsed.length === 0) return
-            const last = parsed[parsed.length - 1]
-            const preview = truncatePreview(toPreviewText(last.content))
-            if (!preview) return
-
-            localItems.push({
-              characterId: char.id,
-              preview,
-              updatedAt: last.timestamp || null,
-            })
-          } catch (error) {
-            console.error(`Failed to load local recent chats for ${char.id}`, error)
-          }
-        })
-
-        localItems.sort((a, b) => {
-          const dateA = a.updatedAt ? Date.parse(a.updatedAt) : 0
-          const dateB = b.updatedAt ? Date.parse(b.updatedAt) : 0
-          return dateB - dateA
-        })
-        setRecentChats(localItems)
-        return
-      }
-
-      if (!isSupabaseConfigured()) {
-        setRecentChats([])
-        return
-      }
-
       try {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session) {
-          setRecentChats([])
-          return
+        const recentItems = await loadRecentChatsFromRepository({ user })
+        if (isMounted) {
+          setRecentChats(recentItems)
         }
-
-        const { data, error } = await supabase
-          .from('chat_messages')
-          .select('character_id, content, created_at')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-
-        if (error) throw error
-
-        const map = new Map<string, RecentChatItem>()
-        data?.forEach((row: any) => {
-          const characterId = String(row.character_id || '')
-          if (!CHARACTERS[characterId] || map.has(characterId)) {
-            return
-          }
-
-          const preview = truncatePreview(parseSavedContentToPreview(row.content))
-          if (!preview) return
-
-          map.set(characterId, {
-            characterId,
-            preview,
-            updatedAt: row.created_at || null,
-          })
-        })
-
-        setRecentChats(Array.from(map.values()))
       } catch (error) {
-        console.error("Failed to load recent chats", error)
-        setRecentChats([])
+        devError("Failed to load recent chats", error)
+        if (isMounted) {
+          setRecentChats([])
+        }
       }
     }
 
     loadRecentChats()
-  }, [user, characters])
+
+    return () => {
+      isMounted = false
+    }
+  }, [user])
 
   const filteredCharacters = characters.filter((char) => {
     const meta = CHARACTER_UI_META[char.id]
@@ -193,22 +96,37 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
   const primaryCharacterMeta = primaryCharacter ? CHARACTER_UI_META[primaryCharacter.id] : null
   const recentContinuation = recentChats.slice(0, 4)
   const heroSignals = ["지금 가장 많이 이어진 대화", "감정선이 짙은 추천", "가볍게 시작하기 좋은 분위기"]
+  const storyFlowSteps = [
+    { title: "감정 시동", description: "캐릭터의 현재 무드로 대화를 시작해요." },
+    { title: "관계 확장", description: "속마음·겉말 대비로 대화 밀도를 올려요." },
+    { title: "장면 고정", description: "최근 대화 이어하기로 흐름을 유지해요." },
+  ]
   const selectedCharacter = selectedCharacterId ? CHARACTERS[selectedCharacterId] : null
   const selectedCharacterMeta = selectedCharacter ? CHARACTER_UI_META[selectedCharacter.id] : null
 
   const handleSignOut = async () => {
-    if (!isSupabaseConfigured()) {
+    const supabaseModule = await import("@/lib/supabase")
+    if (!supabaseModule.isSupabaseConfigured()) {
       toast.error("Supabase가 설정되지 않았습니다")
       return
     }
     try {
-      await supabase.auth.signOut()
+      await supabaseModule.supabase.auth.signOut()
       toast.success("로그아웃되었습니다")
     } catch (error) {
-      console.error("Sign out error:", error)
+      devError("Sign out error:", error)
       toast.error("로그아웃 중 오류가 발생했습니다")
     }
   }
+
+  const avatarSeed = user ? (() => {
+    const source = `${user.id}:${user.email || "user"}`
+    let hash = 0
+    for (let index = 0; index < source.length; index += 1) {
+      hash = (hash * 31 + source.charCodeAt(index)) | 0
+    }
+    return `vmate-${Math.abs(hash)}`
+  })() : "vmate-guest"
 
   return (
     <div className="relative min-h-dvh overflow-hidden bg-[#e8e1d5] pb-[calc(5rem+env(safe-area-inset-bottom))] text-[#1f2128]">
@@ -238,7 +156,7 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
                   <div className="h-8 w-8 cursor-pointer rounded-full bg-gradient-to-tr from-[#9d8ab9] to-[#cba2bb] p-[2px]">
                     <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-white">
                       <img
-                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`}
+                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${avatarSeed}`}
                         alt="User"
                         className="h-full w-full object-cover"
                       />
@@ -351,6 +269,25 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
                 아직 이어갈 대화가 없어요. 추천 캐릭터로 첫 대화를 시작해보세요.
               </div>
             )}
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <div>
+            <p className="text-xs font-semibold tracking-[0.12em] text-[#8c8376]">STORY FLOW</p>
+            <h2 className="mt-1 text-2xl font-black text-[#252730] sm:text-[2rem]">오늘의 대화 연출 플로우</h2>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            {storyFlowSteps.map((step, index) => (
+              <article
+                key={step.title}
+                className="rounded-2xl border border-white/45 bg-[linear-gradient(135deg,rgba(255,255,255,0.92),rgba(236,229,248,0.82))] p-4 shadow-[0_18px_28px_-24px_rgba(23,21,18,0.72)]"
+              >
+                <p className="text-[11px] font-black tracking-[0.14em] text-[#7b5cb8]">STEP {index + 1}</p>
+                <h3 className="mt-2 text-base font-bold text-[#2f3138]">{step.title}</h3>
+                <p className="mt-1 text-sm text-[#5d574d]">{step.description}</p>
+              </article>
+            ))}
           </div>
         </section>
 

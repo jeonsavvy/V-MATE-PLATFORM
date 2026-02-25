@@ -12,7 +12,7 @@ graph TD
     A -->|"POST /api/chat"| B["Cloudflare Worker"]
     B --> C["Google Gemini API"]
     C -->|"JSON response"| B
-    B -->|"Normalized JSON string"| A
+    B -->|"Normalized message object"| A
 
     A --> D["LocalStorage (Guest)"]
     A --> E["Supabase (Logged-in User)"]
@@ -37,7 +37,7 @@ graph TD
 - **Origin allowlist CORS**: `ALLOWED_ORIGINS` 기반 허용
 - **요청 제한**: Origin/IP 키 기반 rate limit 적용
 - **응답 정규화**: 서버에서 `emotion / inner_heart / response`(+ `narration` optional) 스키마 보정 후 반환
-- **프롬프트 모듈 분리**: `src/lib/prompts/*`에서 캐릭터별 시스템 프롬프트 관리
+- **서버 프롬프트 소유**: `server/prompts.js`에서 캐릭터별 시스템 프롬프트 관리 (클라이언트 전송 제거)
 - **UI 리프레시**: 홈/채팅 화면 글래스모피즘+그라디언트 기반 시각 개선
 
 ---
@@ -85,6 +85,9 @@ ALLOWED_ORIGINS=http://localhost:5173,https://your-domain.com
 ALLOW_ALL_ORIGINS=false
 RATE_LIMIT_WINDOW_MS=60000
 RATE_LIMIT_MAX_REQUESTS=30
+ALLOW_NON_BROWSER_ORIGIN=false
+REQUEST_BODY_MAX_BYTES=32768
+TRUST_X_FORWARDED_FOR=false
 ```
 
 ### 3) DB 초기화
@@ -101,6 +104,14 @@ Cloudflare Worker 로컬 확인:
 
 ```bash
 npm run cf:dev
+```
+
+품질 검증:
+
+```bash
+npm run typecheck
+npm test
+npm run build
 ```
 
 ---
@@ -126,9 +137,26 @@ npm run cf:dev
 - Cache 자동 생성: `GEMINI_CONTEXT_CACHE_AUTO_CREATE` (코드 기본 false, `wrangler.jsonc` 샘플 값 true)
 - Gemini thinking level: `GEMINI_THINKING_LEVEL` (`minimal|low|medium|high`, 기본 `minimal`)
 - 기본 Rate Limit: 60초당 30회(`RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX_REQUESTS`)
-- CORS는 기본적으로 `ALLOWED_ORIGINS` 기반 허용(단, Origin 없는 non-browser 호출은 허용)
+- CORS는 기본적으로 `ALLOWED_ORIGINS` 기반 허용
+- Origin 없는 호출 허용 여부: `ALLOW_NON_BROWSER_ORIGIN` (기본 `false`)
+- 요청 body 최대 크기: `REQUEST_BODY_MAX_BYTES` (기본 `32768`)
+- `X-Forwarded-For` 신뢰 여부: `TRUST_X_FORWARDED_FOR` (기본 `false`)
 - 클라이언트에서 service role key 감지 시 Supabase를 비활성화하고 placeholder client로 대체
 - API 실패/파싱 실패 시 캐릭터별 fallback 대사 출력(클라이언트 레벨 유지)
+
+### Chat API v2 계약 (기본)
+
+- 요청:
+  - `characterId`: `mika | alice | kael`
+  - `userMessage`: string
+  - `messageHistory`: `{ role, content }[]`
+  - `cachedContent?`: string
+- 응답:
+  - `message`: `{ emotion, inner_heart, response, narration? }`
+  - `cachedContent`: `string | null`
+  - `trace_id`: string
+
+호환 목적의 v1 응답(`text` JSON string)은 `X-V-MATE-API-Version: 1` 헤더로 요청 시 유지됩니다.
 
 ### Cloud Run 백엔드 사용 시 (권장)
 
@@ -143,12 +171,8 @@ npm run cf:dev
 
 ## 캐릭터 프롬프트 수정 가이드
 
-- 공통 규칙: `src/lib/prompts/common.ts`
-- 캐릭터별 규칙:
-  - `src/lib/prompts/mika.ts`
-  - `src/lib/prompts/alice.ts`
-  - `src/lib/prompts/kael.ts`
-- `src/lib/data.ts`에서는 캐릭터 메타/이미지/인사말만 유지하고, 시스템 프롬프트는 모듈 import로 조합합니다.
+- 서버 프롬프트 파일: `server/prompts.js`
+- `src/lib/data.ts`에서는 캐릭터 메타/이미지/인사말만 유지합니다.
 - 출력 계약은 `emotion`, `inner_heart`, `response` 필수 + `narration` 선택 스키마를 사용합니다.
 
 ---
@@ -192,7 +216,7 @@ gcloud run deploy v-mate-chat \
   --region us-central1 \
   --allow-unauthenticated \
   --set-secrets GOOGLE_API_KEY=GEMINI_API_KEY:latest \
-  --set-env-vars ALLOWED_ORIGINS=https://v-mate.jeonsavvy.workers.dev,http://localhost:5173,http://127.0.0.1:5173,ALLOW_ALL_ORIGINS=false
+  --set-env-vars ALLOWED_ORIGINS=https://v-mate.jeonsavvy.workers.dev,http://localhost:5173,http://127.0.0.1:5173,ALLOW_ALL_ORIGINS=false,ALLOW_NON_BROWSER_ORIGIN=false,REQUEST_BODY_MAX_BYTES=32768,TRUST_X_FORWARDED_FOR=false
 ```
 
 3) 프론트 `.env`에 Cloud Run URL 연결 후 재배포
@@ -205,16 +229,13 @@ VITE_CHAT_API_BASE_URL=https://<your-cloud-run-url>
 
 ```bash
 ├── server/chat-handler.js
+├── server/chat-handler.test.js
+├── server/modules/
 ├── worker.js
 ├── wrangler.jsonc
 ├── src/components/
 ├── src/lib/
-│   └── prompts/
-│       ├── common.ts
-│       ├── mika.ts
-│       ├── alice.ts
-│       ├── kael.ts
-│       └── index.ts
+├── server/prompts.js
 ├── supabase_schema.sql
 └── README.md
 ```
