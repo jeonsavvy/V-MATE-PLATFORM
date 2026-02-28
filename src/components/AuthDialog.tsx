@@ -190,7 +190,7 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
 
   const handleOpenResetForm = () => {
     setIsResetFormOpen(true)
-    setResetEmail((prev) => prev || email.trim())
+    setResetEmail("")
   }
 
   return (
