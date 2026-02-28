@@ -47,7 +47,6 @@ export function ChatComposer({
               key={template}
               type="button"
               onClick={() => onQuickReplyClick(template)}
-              disabled={isLoading}
               className="rounded-full border border-[#d8cebe] bg-white/82 px-3 py-1.5 text-xs font-semibold text-[#615b51] transition hover:border-[#cfbce9] hover:text-[#3b3c43] disabled:cursor-not-allowed disabled:opacity-55"
             >
               {template}
@@ -64,10 +63,9 @@ export function ChatComposer({
             placeholder={isLoading ? "답변 생성 중입니다..." : "메시지를 입력하세요"}
             aria-label={`${characterName}에게 보낼 메시지`}
             aria-describedby="chat-composer-hint"
-            disabled={isLoading}
             maxLength={CHAT_REQUEST_LIMITS.userMessageMaxChars}
             rows={1}
-            className="max-h-[156px] min-h-[44px] flex-1 resize-none bg-transparent px-1 py-2 text-[15px] leading-6 text-[#2a2c34] placeholder:text-[#847c73] outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            className="max-h-[156px] min-h-[44px] flex-1 resize-none bg-transparent px-1 py-2 text-[15px] leading-6 text-[#2a2c34] placeholder:text-[#847c73] outline-none"
           />
           <Button
             onClick={onSend}
