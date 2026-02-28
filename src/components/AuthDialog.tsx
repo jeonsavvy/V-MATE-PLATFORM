@@ -36,11 +36,13 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
   const [isResetFormOpen, setIsResetFormOpen] = useState(false)
   const [activeTab, setActiveTab] = useState("signin")
   
-  const [email, setEmail] = useState("")
+  const [signInEmail, setSignInEmail] = useState("")
+  const [signInPassword, setSignInPassword] = useState("")
+  const [signUpName, setSignUpName] = useState("")
+  const [signUpEmail, setSignUpEmail] = useState("")
+  const [signUpPassword, setSignUpPassword] = useState("")
+  const [signUpConfirmPassword, setSignUpConfirmPassword] = useState("")
   const [resetEmail, setResetEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [confirmPassword, setConfirmPassword] = useState("")
-  const [name, setName] = useState("")
 
   useEffect(() => {
     if (activeTab !== "signin") {
@@ -69,16 +71,16 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
     
     try {
       const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+        email: signInEmail,
+        password: signInPassword,
       })
 
       if (error) throw error
 
       toast.success("로그인 성공!")
       onOpenChange(false)
-      setEmail("")
-      setPassword("")
+      setSignInEmail("")
+      setSignInPassword("")
       onSuccess?.()
     } catch (error: unknown) {
       toast.error(resolveErrorMessage(error, "로그인에 실패했습니다"))
@@ -96,7 +98,7 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
       return
     }
     
-    if (password !== confirmPassword) {
+    if (signUpPassword !== signUpConfirmPassword) {
       toast.error("비밀번호가 일치하지 않습니다.")
       return
     }
@@ -106,11 +108,11 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
     try {
       const redirectOrigin = getBrowserOrigin()
       const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
+        email: signUpEmail,
+        password: signUpPassword,
         options: {
           data: {
-            name: name,
+            name: signUpName,
           },
           ...(redirectOrigin ? { emailRedirectTo: redirectOrigin } : {}),
         },
@@ -130,18 +132,18 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
         if (data.session) {
           toast.success("회원가입 및 로그인 성공!")
           onOpenChange(false)
-          setEmail("")
-          setPassword("")
-          setConfirmPassword("")
-          setName("")
+          setSignUpEmail("")
+          setSignUpPassword("")
+          setSignUpConfirmPassword("")
+          setSignUpName("")
           onSuccess?.()
         } else {
           toast.success("회원가입 성공! 이메일을 확인해주세요.")
           onOpenChange(false)
-          setEmail("")
-          setPassword("")
-          setConfirmPassword("")
-          setName("")
+          setSignUpEmail("")
+          setSignUpPassword("")
+          setSignUpConfirmPassword("")
+          setSignUpName("")
         }
       }
     } catch (error: unknown) {
@@ -219,8 +221,8 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
                   id="email" 
                   type="email" 
                   placeholder="hello@example.com" 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={signInEmail}
+                  onChange={(e) => setSignInEmail(e.target.value)}
                   required
                   className="border-[#d1c4b3] bg-white/75 text-[#22242b] placeholder:text-[#8f8b82] focus-visible:border-[#8b6cc7]"
                 />
@@ -230,8 +232,8 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
                 <Input 
                   id="password" 
                   type="password" 
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  value={signInPassword}
+                  onChange={(e) => setSignInPassword(e.target.value)}
                   required
                   className="border-[#d1c4b3] bg-white/75 text-[#22242b] focus-visible:border-[#8b6cc7]"
                 />
@@ -291,8 +293,8 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
                 <Input 
                   id="name" 
                   placeholder="표시할 이름" 
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  value={signUpName}
+                  onChange={(e) => setSignUpName(e.target.value)}
                   required
                   className="border-[#d1c4b3] bg-white/75 text-[#22242b] placeholder:text-[#8f8b82] focus-visible:border-[#8b6cc7]"
                 />
@@ -303,8 +305,8 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
                   id="signup-email" 
                   type="email" 
                   placeholder="hello@example.com" 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={signUpEmail}
+                  onChange={(e) => setSignUpEmail(e.target.value)}
                   required
                   className="border-[#d1c4b3] bg-white/75 text-[#22242b] placeholder:text-[#8f8b82] focus-visible:border-[#8b6cc7]"
                 />
@@ -314,8 +316,8 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
                 <Input 
                   id="signup-password" 
                   type="password" 
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  value={signUpPassword}
+                  onChange={(e) => setSignUpPassword(e.target.value)}
                   required
                   minLength={6}
                   className="border-[#d1c4b3] bg-white/75 text-[#22242b] focus-visible:border-[#8b6cc7]"
@@ -327,8 +329,8 @@ export function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
                 <Input 
                   id="signup-password-confirm" 
                   type="password" 
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  value={signUpConfirmPassword}
+                  onChange={(e) => setSignUpConfirmPassword(e.target.value)}
                   required
                   minLength={6}
                   className="border-[#d1c4b3] bg-white/75 text-[#22242b] focus-visible:border-[#8b6cc7]"
