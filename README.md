@@ -313,6 +313,7 @@ npm run cf:deploy
 - Worker 엔트리: `worker.js`
 - 이 명령은 `npm run build` 후 `wrangler deploy`를 수행합니다.
 - `wrangler.jsonc`의 `keep_vars: true`로 대시보드에서 설정한 runtime vars/secrets를 배포 시 유지합니다.
+- `wrangler.jsonc`의 `assets.run_worker_first`로 `/`, `/index.html`, `/chat/*` 요청은 Worker가 먼저 처리해 runtime env 스크립트를 항상 HTML에 주입합니다.
 
 ---
 

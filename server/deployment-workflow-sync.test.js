@@ -34,6 +34,16 @@ test('wrangler config preserves dashboard vars during deploy', async () => {
   assert.match(wranglerConfig, /"keep_vars"\s*:\s*true/);
 });
 
+
+test('wrangler config runs worker first for shell routes that need runtime env injection', async () => {
+  const wranglerConfig = await readUtf8('wrangler.jsonc');
+
+  assert.match(wranglerConfig, /"run_worker_first"\s*:\s*\[/);
+  assert.match(wranglerConfig, /"\/"/);
+  assert.match(wranglerConfig, /"\/index\.html"/);
+  assert.match(wranglerConfig, /"\/chat\/\*"/);
+});
+
 test('README documents worker auto-deploy, required secrets, runtime prerequisites, and rollback', async () => {
   const readme = await readUtf8('README.md');
 
