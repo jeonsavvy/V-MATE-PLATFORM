@@ -84,10 +84,11 @@ jobs:
             --retry 3 \
             --retry-delay 2 \
             --retry-all-errors \
+            --header 'Accept: */*' \
             https://v-mate.jeonsavvy.workers.dev/)
 
-          if ! printf '%s' "$html" | grep -q 'V-MATE'; then
-            echo '::error::Homepage smoke check failed: expected V-MATE in HTML response'
+          if ! printf '%s' "$html" | grep -q 'window.__V_MATE_RUNTIME_ENV__'; then
+            echo '::error::Homepage smoke check failed: expected runtime env script in HTML response'
             exit 1
           fi
 

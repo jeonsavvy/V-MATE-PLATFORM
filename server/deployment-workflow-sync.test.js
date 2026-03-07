@@ -22,6 +22,7 @@ test('github ci workflow deploys worker only after quality succeeds on main push
   assert.match(workflow, /concurrency:/);
   assert.match(workflow, /group:\s*production-worker/);
   assert.match(workflow, /npm run cf:deploy/);
+  assert.match(workflow, /window\.__V_MATE_RUNTIME_ENV__/);
   assert.match(workflow, /CLOUDFLARE_API_TOKEN/);
   assert.match(workflow, /CLOUDFLARE_ACCOUNT_ID/);
 });

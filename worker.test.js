@@ -498,6 +498,9 @@ test('injects runtime env script into html responses', async () => {
   const html = await response.text();
   assert.match(html, /window\.__V_MATE_RUNTIME_ENV__=/);
   assert.match(html, /VITE_CHAT_API_BASE_URL/);
+  assert.equal(response.headers.get('cache-control'), 'no-store, max-age=0');
+  assert.equal(response.headers.get('pragma'), 'no-cache');
+  assert.equal(response.headers.get('etag'), null);
 });
 
 

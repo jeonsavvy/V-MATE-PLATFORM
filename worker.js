@@ -222,6 +222,8 @@ const injectRuntimeEnvIntoHtml = async (response, env) => {
   const headers = new Headers(response.headers);
   headers.delete("content-length");
   headers.delete("etag");
+  headers.set("Cache-Control", "no-store, max-age=0");
+  headers.set("Pragma", "no-cache");
 
   return new Response(body, {
     status: response.status,
