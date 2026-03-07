@@ -1,3 +1,5 @@
+import { motion } from "motion/react"
+
 interface StoryFlowStep {
   title: string
   description: string
@@ -9,23 +11,36 @@ interface HomeStoryFlowSectionProps {
 
 export function HomeStoryFlowSection({ steps }: HomeStoryFlowSectionProps) {
   return (
-    <section className="space-y-4">
-      <div>
-        <p className="text-xs font-semibold tracking-[0.12em] text-[#8c8376]">QUICK GUIDE</p>
-        <h2 className="mt-1 text-2xl font-black text-[#252730] sm:text-[2rem]">대화 시작 가이드</h2>
+    <section className="rounded-[2rem] border border-border/80 bg-card/82 p-6 shadow-paper md:p-8">
+      <div className="max-w-2xl space-y-3">
+        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-muted-foreground">Narrative flow</p>
+        <h2 className="font-display text-[clamp(2rem,4vw,3rem)] text-foreground">대화를 여는 흐름도 단정하게</h2>
+        <p className="text-base leading-7 text-muted-foreground">
+          복잡한 설정을 보여주기보다, 캐릭터 선택부터 첫 장면 시작까지 필요한 동선만 또렷하게 정리했습니다.
+        </p>
       </div>
-      <div className="grid gap-3 md:grid-cols-3">
+
+      <ol className="mt-8 grid gap-4 lg:grid-cols-3">
         {steps.map((step, index) => (
-          <article
+          <motion.li
             key={step.title}
-            className="rounded-2xl border border-white/45 bg-[linear-gradient(135deg,rgba(255,255,255,0.92),rgba(236,229,248,0.82))] p-4 shadow-[0_18px_28px_-24px_rgba(23,21,18,0.72)]"
+            initial={{ opacity: 0, y: 18 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.35 }}
+            transition={{ delay: index * 0.08 }}
+            className="relative overflow-hidden rounded-[1.8rem] border border-border/75 bg-background/70 p-5 shadow-inner-line"
           >
-            <p className="text-[11px] font-black tracking-[0.14em] text-[#7b5cb8]">STEP {index + 1}</p>
-            <h3 className="mt-2 text-base font-bold text-[#2f3138]">{step.title}</h3>
-            <p className="mt-1 text-sm text-[#5d574d]">{step.description}</p>
-          </article>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Step {index + 1}</p>
+                <h3 className="mt-3 text-xl font-semibold text-foreground">{step.title}</h3>
+              </div>
+              <span className="font-display text-4xl leading-none text-primary/28">0{index + 1}</span>
+            </div>
+            <p className="mt-4 text-sm leading-7 text-muted-foreground">{step.description}</p>
+          </motion.li>
         ))}
-      </div>
+      </ol>
     </section>
   )
 }

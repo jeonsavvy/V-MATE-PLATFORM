@@ -23,28 +23,20 @@ export function ClearChatDialog({
 }: ClearChatDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md rounded-2xl border border-[#dfd3c1] bg-[#f8f2e9] p-5">
+      <DialogContent className="max-w-lg rounded-[2rem]">
         <DialogHeader>
-          <DialogTitle className="text-[#2f3138]">대화를 초기화할까요?</DialogTitle>
-          <DialogDescription className="text-[#6f665a]">
-            긴 대화는 전송 시 자동으로 압축됩니다. 초기화를 누르면 이 캐릭터 대화 기록이 모두 삭제됩니다.
+          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Reset scene</p>
+          <DialogTitle>이 캐릭터와의 대화를 비울까요?</DialogTitle>
+          <DialogDescription>
+            긴 대화는 전송 시 자동으로 압축됩니다. 초기화를 누르면 이 캐릭터의 저장된 기록과 현재 장면이 모두 삭제됩니다.
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter className="gap-2">
-          <Button
-            variant="ghost"
-            onClick={() => onOpenChange(false)}
-            disabled={isSubmitting}
-            className="rounded-xl border border-[#d8ccbb] bg-white/70 text-[#5f584f] hover:bg-white"
-          >
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
             취소
           </Button>
-          <Button
-            onClick={onConfirm}
-            disabled={isSubmitting}
-            className="rounded-xl bg-red-600 text-white hover:bg-red-500"
-          >
-            {isSubmitting ? "초기화 중..." : "초기화"}
+          <Button variant="destructive" onClick={onConfirm} disabled={isSubmitting}>
+            {isSubmitting ? "초기화 중..." : "대화 초기화"}
           </Button>
         </DialogFooter>
       </DialogContent>

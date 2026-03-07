@@ -1,3 +1,4 @@
+import { CHARACTER_UI_META } from "@/lib/character-ui"
 import { Avatar } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import type { SidebarCharacterEntry } from "@/lib/chat/sidebarEntries"
@@ -14,16 +15,18 @@ export function CharacterSidebar({
   onCharacterChange,
 }: CharacterSidebarProps) {
   return (
-    <aside className="hidden h-full border-r border-white/45 bg-[#eee7db]/72 p-4 backdrop-blur-xl lg:block">
-      <div className="flex h-full flex-col">
-        <div className="flex items-center justify-between px-2">
-          <p className="text-sm font-bold text-[#2f3138]">캐릭터 목록</p>
-          <p className="text-xs text-[#8e867a]">{entries.filter((entry) => entry.hasHistory).length}개 기록</p>
+    <aside className="hidden h-full border-r border-border/70 bg-card/72 p-4 backdrop-blur lg:flex lg:flex-col">
+      <div className="flex h-full flex-col gap-4">
+        <div className="space-y-2 px-2 pt-2">
+          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">Conversation index</p>
+          <h2 className="font-display text-3xl text-foreground">대화 보관함</h2>
+          <p className="text-sm leading-6 text-muted-foreground">최근 기록이 있는 캐릭터부터 정리해 보여줍니다.</p>
         </div>
 
-        <div className="mt-4 space-y-2 overflow-y-auto pr-1">
+        <div className="space-y-2 overflow-y-auto pr-1">
           {entries.map((entry) => {
             const item = entry.character
+            const meta = CHARACTER_UI_META[item.id]
             const isActive = item.id === activeCharacterId
 
             return (
@@ -33,10 +36,10 @@ export function CharacterSidebar({
                 onClick={() => onCharacterChange(item.id)}
                 aria-current={isActive ? "true" : undefined}
                 className={cn(
-                  "w-full rounded-2xl border p-3 text-left shadow-[0_14px_24px_-20px_rgba(23,22,20,0.72)] transition",
+                  "w-full rounded-[1.6rem] border p-3 text-left transition",
                   isActive
-                    ? "border-[#d4c2ed] bg-white/94"
-                    : "border-white/45 bg-white/74 hover:border-[#d1bfe9]"
+                    ? "border-primary/30 bg-background shadow-lift"
+                    : "border-border/70 bg-background/55 shadow-inner-line hover:border-primary/18 hover:bg-background/72"
                 )}
               >
                 <div className="flex items-start gap-3">
@@ -44,16 +47,21 @@ export function CharacterSidebar({
                     src={item.images.normal}
                     alt={item.name}
                     fallback={item.name[0]}
-                    className="size-10 border border-black/10 object-cover object-top"
+                    className="size-12 rounded-[1rem] border border-border/80 object-cover object-top"
                   />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-1">
-                      <p className="truncate text-sm font-bold text-[#2f3138]">{item.name}</p>
-                      <span className="rounded-full border border-[#d8cebf] bg-white/80 px-1.5 py-0.5 text-[10px] font-semibold text-[#7b7469]">
-                        {entry.hasHistory ? "최근" : "새 대화"}
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground">{item.name}</p>
+                        <p className="truncate text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                          {entry.hasHistory ? "recent scene" : "new conversation"}
+                        </p>
+                      </div>
+                      <span className="rounded-full border border-border/80 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        {meta.badge || "curated"}
                       </span>
                     </div>
-                    <p className="mt-1 truncate text-xs text-[#6b655b]">{entry.previewText}</p>
+                    <p className="line-clamp-2 text-sm leading-6 text-muted-foreground">{entry.previewText}</p>
                   </div>
                 </div>
               </button>

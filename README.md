@@ -303,12 +303,56 @@ npm run verify
 
 ## Cloudflare 배포
 
+수동 배포가 필요할 때는 아래 명령을 사용합니다.
+
 ```bash
 npm run cf:deploy
 ```
 
 - 배포 설정: `wrangler.jsonc`
 - Worker 엔트리: `worker.js`
+- 이 명령은 `npm run build` 후 `wrangler deploy`를 수행합니다.
+
+---
+
+## GitHub Actions 자동배포 (main -> production Worker)
+
+- `pull_request`에서는 **검증만 수행**합니다.
+- `main` 브랜치로 push되면 GitHub Actions가 아래 순서로 자동 실행됩니다.
+  1. `npm run verify`
+  2. `npm run cf:deploy`
+  3. production smoke check
+- `master`는 기존 CI 트리거는 유지하지만 **자동배포 대상은 아닙니다.**
+- production URL 기준: `https://v-mate.jeonsavvy.workers.dev`
+
+### GitHub Secrets
+
+GitHub Actions `production` 환경 또는 repository secrets에 아래 값이 필요합니다.
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+
+### Cloudflare production runtime prerequisites
+
+자동배포 전에 Cloudflare Worker production 환경에 아래 값이 이미 세팅되어 있어야 합니다.
+
+- `GOOGLE_API_KEY` (secret)
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY` 또는 `VITE_SUPABASE_PUBLISHABLE_KEY`
+
+Worker-only 운영 기준에서는 아래 값을 설정하지 않거나 비워둡니다.
+
+- `VITE_CHAT_API_BASE_URL`
+  - 미설정/빈 값이면 프론트는 Worker의 상대경로 `/api/chat`를 사용합니다.
+
+### production smoke check
+
+자동배포 후 GitHub Actions가 아래를 확인합니다.
+
+1. `GET https://v-mate.jeonsavvy.workers.dev/` -> `200` + HTML에 `V-MATE` 포함
+2. `POST https://v-mate.jeonsavvy.workers.dev/api/chat` (무인증) -> `401 AUTH_REQUIRED`
+
+두 번째 smoke check는 로그인 없이도 API 라우팅, CORS, auth guard가 살아있는지 확인하기 위한 최소 검증입니다.
 
 ---
 
@@ -322,20 +366,22 @@ npm run verify
 
 - `ALLOWED_ORIGINS`, `ALLOW_NON_BROWSER_ORIGIN`, `ALLOW_ALL_ORIGINS` 운영값 확인
 - `GOOGLE_API_KEY` Secret 주입 확인
+- `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`(또는 `VITE_SUPABASE_PUBLISHABLE_KEY`) 운영값 확인
+- Worker-only 운영이면 `VITE_CHAT_API_BASE_URL`가 비어 있는지 확인
 - `REQUEST_BODY_MAX_BYTES`, `RATE_LIMIT_*` 운영 정책 확인
 
 ### 배포 후 스모크
 
-1. `GET /healthz` -> `200`
-2. 허용 Origin에서 `/api/chat` 정상 응답 + `X-V-MATE-Trace-Id` 확인
+1. `GET https://v-mate.jeonsavvy.workers.dev/` -> `200` + `V-MATE` 포함
+2. 허용 Origin에서 `/api/chat` 무인증 요청 -> `401 AUTH_REQUIRED`
 3. 비허용 Origin에서 `/api/chat` -> `403 ORIGIN_NOT_ALLOWED`
 4. 과대 요청 본문 -> `413 REQUEST_BODY_TOO_LARGE`
 
 ### 롤백
 
 - **Cloudflare Worker**: 직전 정상 배포 버전으로 재배포 (`wrangler deployments` / `wrangler rollback`)
-- **Cloud Run**: 직전 revision으로 트래픽 즉시 전환
-- 롤백 후 `healthz`, `POST /api/chat` 1회 검증 필수
+- smoke check 실패 시 자동배포 워크플로우는 실패로 표시하고, manual rollback을 수행합니다.
+- Cloud Run은 현재 자동배포 범위 밖이며, 별도 운영 경로로 사용할 때만 별도 rollback 절차를 적용합니다.
 - 채팅 API: `/api/chat`
 - `GOOGLE_API_KEY`는 Cloudflare secret으로 등록:
 
@@ -432,5 +478,11 @@ VITE_CHAT_API_BASE_URL=https://<your-cloud-run-url>
 ## CI
 
 - GitHub Actions: `.github/workflows/ci.yml`
-- 트리거: `push(main/master)`, `pull_request`
-- 실행: `npm run verify` (typecheck + test + build)
+- 트리거:
+  - `pull_request` -> `npm run verify`
+  - `push(main)` -> `npm run verify` 후 `deploy_worker` 실행
+  - `push(master)` -> 기존 verify만 수행, 자동배포 없음
+- production deploy job:
+  - GitHub `production` environment 사용
+  - `npm run cf:deploy` 실행
+  - 배포 후 root + `/api/chat` smoke check 수행

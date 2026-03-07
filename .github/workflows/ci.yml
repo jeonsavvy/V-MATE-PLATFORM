@@ -27,3 +27,89 @@ jobs:
 
       - name: Verify (typecheck, test, build)
         run: npm run verify
+
+  deploy_worker:
+    name: Deploy Worker
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    concurrency:
+      group: production-worker
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: https://v-mate.jeonsavvy.workers.dev
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate required Cloudflare secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::Missing required GitHub secret: CLOUDFLARE_API_TOKEN"
+            exit 1
+          fi
+          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Missing required GitHub secret: CLOUDFLARE_ACCOUNT_ID"
+            exit 1
+          fi
+
+      - name: Build and deploy Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npm run cf:deploy
+
+      - name: Smoke check homepage
+        run: |
+          html=$(curl --fail --silent --show-error \
+            --connect-timeout 10 \
+            --max-time 20 \
+            --retry 3 \
+            --retry-delay 2 \
+            --retry-all-errors \
+            https://v-mate.jeonsavvy.workers.dev/)
+
+          if ! printf '%s' "$html" | grep -q 'V-MATE'; then
+            echo '::error::Homepage smoke check failed: expected V-MATE in HTML response'
+            exit 1
+          fi
+
+      - name: Smoke check chat auth guard
+        run: |
+          response_file=$(mktemp)
+          status=$(curl --silent --show-error \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            --connect-timeout 10 \
+            --max-time 20 \
+            --retry 0 \
+            -X POST \
+            -H 'Origin: https://v-mate.jeonsavvy.workers.dev' \
+            -H 'Content-Type: application/json' \
+            --data '{"characterId":"mika","userMessage":"안녕","messageHistory":[]}' \
+            https://v-mate.jeonsavvy.workers.dev/api/chat)
+
+          if [ "$status" != '401' ]; then
+            echo "::error::Chat smoke check failed: expected HTTP 401, got $status"
+            cat "$response_file"
+            exit 1
+          fi
+
+          node -e "const fs=require('node:fs'); const payload=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); if (payload.error_code !== 'AUTH_REQUIRED') { console.error('::error::Chat smoke check failed: expected error_code AUTH_REQUIRED'); console.error(payload); process.exit(1); }" "$response_file"

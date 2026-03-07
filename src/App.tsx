@@ -1,4 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from "react"
+import { AnimatePresence, MotionConfig, motion } from "motion/react"
 import { Toaster } from "@/components/ui/sonner"
 import { toast } from "sonner"
 import { CHARACTERS, isCharacterId } from "@/lib/data"
@@ -57,6 +58,16 @@ const hasPersistedSupabaseSession = (): boolean => {
 
   return getStoredKeys().some((key) => key.startsWith("sb-") && key.endsWith("-auth-token"))
 }
+
+const PageFallback = () => (
+  <div className="flex min-h-dvh items-center justify-center bg-background px-6 text-center">
+    <div className="space-y-3 rounded-[2rem] border border-border/80 bg-card/90 px-8 py-7 shadow-panel backdrop-blur">
+      <p className="text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-muted-foreground">V-MATE</p>
+      <p className="font-display text-[clamp(1.5rem,3vw,2rem)] text-foreground">장면을 정리하는 중</p>
+      <p className="text-sm text-muted-foreground">캐릭터와 대화 공간을 불러오고 있어요.</p>
+    </div>
+  </div>
+)
 
 function App() {
   const [route, setRoute] = useState<RouteState>(resolveInitialRoute)
@@ -142,6 +153,21 @@ function App() {
     }
   }, [shouldInitializeAuth])
 
+  const navigateTo = (nextRoute: RouteState, options?: { replace?: boolean }) => {
+    const nextPath = toPathname(nextRoute)
+    const currentPath = normalizePathname(window.location.pathname)
+    if (currentPath !== nextPath) {
+      if (options?.replace) {
+        window.history.replaceState({}, "", nextPath)
+      } else {
+        window.history.pushState({}, "", nextPath)
+      }
+    } else if (options?.replace) {
+      window.history.replaceState({}, "", nextPath)
+    }
+    setRoute(nextRoute)
+  }
+
   useEffect(() => {
     if (route.view !== "chat") {
       return
@@ -160,21 +186,6 @@ function App() {
     toast.error("채팅은 로그인 후 이용할 수 있습니다.")
     navigateTo({ view: "home" }, { replace: true })
   }, [isAuthResolved, route, user])
-
-  const navigateTo = (nextRoute: RouteState, options?: { replace?: boolean }) => {
-    const nextPath = toPathname(nextRoute)
-    const currentPath = normalizePathname(window.location.pathname)
-    if (currentPath !== nextPath) {
-      if (options?.replace) {
-        window.history.replaceState({}, "", nextPath)
-      } else {
-        window.history.pushState({}, "", nextPath)
-      }
-    } else if (options?.replace) {
-      window.history.replaceState({}, "", nextPath)
-    }
-    setRoute(nextRoute)
-  }
 
   const handleCharacterSelect = (character: Character) => {
     if (!user) {
@@ -208,49 +219,58 @@ function App() {
     navigateTo({ view: "home" })
   }
 
-  const character = route.view === "chat" ? CHARACTERS[route.charId] ?? null : null
-
   const openAuthDialog = () => {
     setShouldInitializeAuth(true)
     setIsAuthResolved(false)
     setIsAuthDialogOpen(true)
   }
 
-  return (
-    <div className="min-h-dvh w-full overflow-x-hidden bg-[#e7dfd3]">
-      <Suspense fallback={<div className="flex min-h-dvh items-center justify-center text-sm text-[#6d665d]">화면 로딩 중...</div>}>
-        {route.view === "home" ? (
-          <Home
-            onCharacterSelect={handleCharacterSelect}
-            user={user}
-            onAuthRequest={openAuthDialog}
-          />
-        ) : (
-          character && (
-            <ChatView
-              key={character.id}
-              character={character}
-              onCharacterChange={handleCharacterChange}
-              user={user}
-              onBack={handleBackToHome}
-            />
-          )
-        )}
-      </Suspense>
+  const character = route.view === "chat" ? CHARACTERS[route.charId] ?? null : null
+  const routeKey = route.view === "chat" ? `chat-${route.charId}` : "home"
 
-      {isAuthDialogOpen && (
-        <Suspense fallback={null}>
-          <AuthDialog
-            open={isAuthDialogOpen}
-            onOpenChange={setIsAuthDialogOpen}
-            onSuccess={() => {
-              setIsAuthDialogOpen(false)
-            }}
-          />
+  return (
+    <MotionConfig transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}>
+      <div className="relative min-h-dvh w-full overflow-x-hidden bg-background">
+        <Suspense fallback={<PageFallback />}>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={routeKey}
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -18 }}
+              className="relative"
+            >
+              {route.view === "home" ? (
+                <Home onCharacterSelect={handleCharacterSelect} user={user} onAuthRequest={openAuthDialog} />
+              ) : (
+                character && (
+                  <ChatView
+                    key={character.id}
+                    character={character}
+                    onCharacterChange={handleCharacterChange}
+                    user={user}
+                    onBack={handleBackToHome}
+                  />
+                )
+              )}
+            </motion.div>
+          </AnimatePresence>
         </Suspense>
-      )}
-      <Toaster />
-    </div>
+
+        {isAuthDialogOpen && (
+          <Suspense fallback={null}>
+            <AuthDialog
+              open={isAuthDialogOpen}
+              onOpenChange={setIsAuthDialogOpen}
+              onSuccess={() => {
+                setIsAuthDialogOpen(false)
+              }}
+            />
+          </Suspense>
+        )}
+        <Toaster />
+      </div>
+    </MotionConfig>
   )
 }
 

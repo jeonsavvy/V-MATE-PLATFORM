@@ -1,3 +1,4 @@
+import { motion } from "motion/react"
 import type { User as SupabaseUser } from "@supabase/supabase-js"
 import type { Character } from "@/lib/data"
 import {
@@ -40,17 +41,18 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
   } = useHomeController({ user })
 
   return (
-    <div className="relative min-h-dvh overflow-hidden bg-[#e8e1d5] pb-[calc(5rem+env(safe-area-inset-bottom))] text-[#1f2128]">
+    <div className="relative min-h-dvh overflow-hidden text-foreground">
       <a
         href="#home-main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-[#2f3138]"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-full focus:bg-card focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-foreground"
       >
         메인 콘텐츠로 건너뛰기
       </a>
 
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_14%_18%,rgba(109,91,72,0.12),transparent_30%),radial-gradient(circle_at_85%_14%,rgba(116,108,139,0.18),transparent_34%),radial-gradient(circle_at_82%_80%,rgba(95,124,146,0.16),transparent_36%)]" />
-        <div className="absolute -top-28 left-1/2 h-72 w-[34rem] -translate-x-1/2 rounded-full bg-[#d6cbba]/70 blur-[120px]" />
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="paper-grid absolute inset-0 opacity-[0.22]" />
+        <div className="absolute left-[-10%] top-[-10%] h-[30rem] w-[30rem] rounded-full bg-primary/10 blur-3xl" />
+        <div className="absolute right-[-12%] top-[12%] h-[24rem] w-[24rem] rounded-full bg-accent/10 blur-3xl" />
       </div>
 
       <HomeHeaderBar
@@ -62,7 +64,7 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
         onSignOut={handleSignOut}
       />
 
-      <main id="home-main-content" className="relative z-10 mx-auto w-full max-w-[1280px] space-y-10 px-4 py-5 md:py-6 lg:space-y-12">
+      <main id="home-main-content" className="relative z-10 mx-auto flex w-full max-w-[1380px] flex-col gap-6 px-4 pb-16 pt-6 md:pt-8 lg:gap-8">
         <HomeHeroSection
           primaryCharacter={primaryCharacter}
           primaryHeroQuote={primaryCharacterMeta?.heroQuote ?? primaryCharacter.greeting}
@@ -91,8 +93,19 @@ export function Home({ onCharacterSelect, user, onAuthRequest }: HomeProps) {
         />
       </main>
 
-      <footer className="relative z-10 px-4 pb-6 text-center text-xs text-[#7f776c]">
-        © V-MATE
+      <footer className="relative z-10 border-t border-border/70 bg-background/60 backdrop-blur-sm">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.7 }}
+          className="mx-auto flex w-full max-w-[1380px] flex-col gap-3 px-4 py-6 text-sm text-muted-foreground md:flex-row md:items-end md:justify-between"
+        >
+          <div className="space-y-1">
+            <p className="font-display text-xl text-foreground">V-MATE</p>
+            <p>감정 변화와 속마음을 함께 읽는 캐릭터 대화실.</p>
+          </div>
+          <p className="text-[0.72rem] font-semibold uppercase tracking-[0.18em]">3 curated personas · 로그인 동기화 · 서버 측 AI 프록시</p>
+        </motion.div>
       </footer>
 
       {selectedCharacter && selectedCharacterMeta && (

@@ -1,5 +1,5 @@
+import { motion } from "motion/react"
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
 import type { Character } from "@/lib/data"
 
 interface CharacterInfoDesktopProps {
@@ -28,54 +28,60 @@ export function CharacterInfoDesktop({
   }
 
   return (
-    <aside className="hidden h-full border-l border-white/45 bg-[#f0e9dd]/82 p-4 backdrop-blur-xl xl:block">
-      <div className="flex h-full flex-col gap-4">
-        <div className="overflow-hidden rounded-2xl border border-white/45 bg-white/76 shadow-[0_18px_32px_-24px_rgba(20,18,15,0.74)]">
+    <aside className="hidden h-full border-l border-border/70 bg-card/72 p-4 backdrop-blur xl:block">
+      <motion.div
+        initial={{ opacity: 0, x: 14 }}
+        animate={{ opacity: 1, x: 0 }}
+        className="flex h-full flex-col gap-4"
+      >
+        <div className="overflow-hidden rounded-[2rem] border border-border/80 bg-background/82 shadow-paper">
           <img
             src={character.images.normal}
             alt={character.name}
-            className="h-56 w-full object-cover object-top"
+            className="h-64 w-full object-cover object-top"
             loading="lazy"
             decoding="async"
           />
-          <div className="space-y-2 p-4">
-            <p className="text-lg font-bold text-[#2f3138]">{character.name}</p>
-            <p className="text-sm leading-relaxed text-[#4f493f]">{summary}</p>
-            <div className="flex flex-wrap gap-1.5">
+          <div className="space-y-4 p-5">
+            <div className="space-y-1">
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Character note</p>
+              <p className="text-2xl font-semibold tracking-[-0.03em] text-foreground">{character.name}</p>
+            </div>
+            <p className="text-sm leading-7 text-muted-foreground">{summary}</p>
+            <div className="flex flex-wrap gap-2">
               {tags.map((tag) => (
-                <span key={tag} className="rounded-md border border-[#dacfbf] bg-white/80 px-2 py-1 text-[11px] font-medium text-[#6b6459]">
+                <span key={tag} className="rounded-full border border-border/80 px-3 py-1 text-[11px] font-medium text-muted-foreground">
                   {tag}
                 </span>
               ))}
             </div>
             {heroQuote && (
-              <p className="rounded-xl border border-[#e1d6ea] bg-[#f7effc] px-3 py-2 text-xs font-semibold leading-relaxed text-[#6b4d88]">
-                “{heroQuote}”
-              </p>
+              <div className="rounded-[1.6rem] border border-primary/16 bg-primary/[0.06] px-4 py-4">
+                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-primary/70">Signature line</p>
+                <p className="mt-2 font-display text-xl leading-[1.6] text-foreground">“{heroQuote}”</p>
+              </div>
             )}
           </div>
         </div>
 
-        <div className="space-y-3 rounded-2xl border border-white/45 bg-white/72 p-4">
-          <p className="text-sm font-bold text-[#2f3138]">대화 상태</p>
-          <div className="rounded-xl border border-[#ddd1bf] bg-[#f7f1e6] px-3 py-2 text-xs text-[#5c564a]">
-            현재 감정: <span className="font-semibold text-[#6a5991]">{activeEmotionLabel}</span>
+        <div className="rounded-[2rem] border border-border/80 bg-background/82 p-5 shadow-paper">
+          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Conversation status</p>
+          <div className="mt-4 rounded-[1.5rem] border border-border/80 bg-card px-4 py-4 shadow-inner-line">
+            <p className="text-sm font-semibold text-foreground">현재 감정 흐름</p>
+            <p className="mt-2 text-sm leading-7 text-muted-foreground">{activeEmotionLabel}</p>
           </div>
           <Button
             type="button"
-            variant="ghost"
+            variant={showEmotionIllustrations ? "secondary" : "outline"}
             onClick={onToggleIllustrations}
             aria-pressed={showEmotionIllustrations}
-            className={cn(
-              "h-10 w-full rounded-xl text-xs font-semibold",
-              showEmotionIllustrations ? "text-[#5b5668] hover:bg-[#7d6aa8]/10" : "text-[#7a756d] hover:bg-black/5"
-            )}
+            className="mt-4 w-full"
             title={showEmotionIllustrations ? "감정 일러스트 숨기기" : "감정 일러스트 보기"}
           >
-            {showEmotionIllustrations ? "감정 일러스트 ON" : "감정 일러스트 OFF"}
+            {showEmotionIllustrations ? "감정 카드 표시 중" : "감정 카드 숨김"}
           </Button>
         </div>
-      </div>
+      </motion.div>
     </aside>
   )
 }
