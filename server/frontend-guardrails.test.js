@@ -171,10 +171,10 @@ test('profile menu masks user email before rendering', async () => {
   const privacySource = await readFile(privacyUtilPath, 'utf8');
   assert.ok(privacySource.includes('export const maskEmailAddress'));
 
-  const headerBarPath = path.join(srcRoot, 'components/home/HomeHeaderBar.tsx');
-  const headerSource = await readFile(headerBarPath, 'utf8');
-  assert.ok(headerSource.includes('maskEmailAddress(user.email)'));
-  assert.equal(headerSource.includes('{user.email}'), false);
+  const shellPath = path.join(srcRoot, 'components/platform/PlatformScaffold.tsx');
+  const shellSource = await readFile(shellPath, 'utf8');
+  assert.ok(shellSource.includes('maskEmailAddress(user.email)'));
+  assert.equal(shellSource.includes('{user.email}'), false);
 });
 
 test('character image metadata uses webp assets for lower payloads', async () => {

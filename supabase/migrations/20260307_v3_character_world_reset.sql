@@ -540,7 +540,7 @@ do $$ begin
     on storage.objects for insert
     with check (
       bucket_id = 'vmate-assets'
-      and (storage.folder(name))[1] = auth.uid()::text
+      and split_part(name, '/' , 1) = auth.uid()::text
     );
 exception when duplicate_object then null; end $$;
 
@@ -549,11 +549,11 @@ do $$ begin
     on storage.objects for update
     using (
       bucket_id = 'vmate-assets'
-      and (storage.folder(name))[1] = auth.uid()::text
+      and split_part(name, '/' , 1) = auth.uid()::text
     )
     with check (
       bucket_id = 'vmate-assets'
-      and (storage.folder(name))[1] = auth.uid()::text
+      and split_part(name, '/' , 1) = auth.uid()::text
     );
 exception when duplicate_object then null; end $$;
 
@@ -562,6 +562,6 @@ do $$ begin
     on storage.objects for delete
     using (
       bucket_id = 'vmate-assets'
-      and (storage.folder(name))[1] = auth.uid()::text
+      and split_part(name, '/' , 1) = auth.uid()::text
     );
 exception when duplicate_object then null; end $$;
