@@ -219,6 +219,85 @@ test('owner ops endpoint is exposed separately from commercial moderation/report
   }
 });
 
+test('allows same-host origin for cloud run platform api even when not explicitly allowlisted', async () => {
+  process.env.ALLOW_NON_BROWSER_ORIGIN = 'false';
+  process.env.ALLOW_ALL_ORIGINS = 'false';
+  process.env.ALLOWED_ORIGINS = 'http://localhost:5173';
+
+  const { baseUrl, close } = await startServer(async () => {
+    throw new Error('chat handler should not be called for same-host origin platform route');
+  });
+
+  try {
+    const url = new URL(baseUrl);
+    const sameOrigin = `${url.protocol}//${url.host}`;
+    const response = await fetch(`${baseUrl}/api/home`, {
+      headers: {
+        Origin: sameOrigin,
+      },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('access-control-allow-origin'), sameOrigin);
+  } finally {
+    await close();
+  }
+});
+
+test('owner ops can delete content through dedicated endpoint', async () => {
+  process.env.ALLOW_NON_BROWSER_ORIGIN = 'false';
+  process.env.ALLOW_ALL_ORIGINS = 'false';
+  process.env.ALLOWED_ORIGINS = 'http://localhost:5173';
+  process.env.REQUIRE_AUTH_FOR_CHAT = 'false';
+
+  const { baseUrl, close } = await startServer(async () => {
+    throw new Error('legacy chat handler should not be called during ops delete route smoke test');
+  });
+
+  try {
+    const response = await fetch(`${baseUrl}/api/ops/content/character/mika`, {
+      method: 'DELETE',
+      headers: {
+        Origin: 'http://localhost:5173',
+      },
+    });
+
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(payload.ok, true);
+  } finally {
+    await close();
+  }
+});
+
+test('owner ops can switch home banner mode through dedicated endpoint', async () => {
+  process.env.ALLOW_NON_BROWSER_ORIGIN = 'false';
+  process.env.ALLOW_ALL_ORIGINS = 'false';
+  process.env.ALLOWED_ORIGINS = 'http://localhost:5173';
+  process.env.REQUIRE_AUTH_FOR_CHAT = 'false';
+
+  const { baseUrl, close } = await startServer(async () => {
+    throw new Error('legacy chat handler should not be called during ops banner route smoke test');
+  });
+
+  try {
+    const response = await fetch(`${baseUrl}/api/ops/home/banner-mode`, {
+      method: 'POST',
+      headers: {
+        Origin: 'http://localhost:5173',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ mode: 'manual' }),
+    });
+
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(payload.home.heroMode, 'manual');
+  } finally {
+    await close();
+  }
+});
+
 test('returns 404 for unknown path', async () => {
   const { baseUrl, close } = await startServer(async () => {
     throw new Error('chat handler should not be called for unknown path');

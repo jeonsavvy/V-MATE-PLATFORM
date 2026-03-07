@@ -18,7 +18,7 @@ export const generateBridgeProfile = ({ character, world, link }) => {
     fantasy: '동료/길드 인원',
     city: '심야를 함께 걷는 인물',
   }
-  const worldKey = world.promptProfile.genreKey
+  const worldKey = world.promptProfile.genreKey || world.promptProfile.genre || 'city'
   const characterRoleInWorld = roleMap[worldKey] || '이 월드에 익숙한 인물'
   const userRoleInWorld = worldKey === 'game'
     ? '같은 파티원'
@@ -37,8 +37,9 @@ export const generateBridgeProfile = ({ character, world, link }) => {
     : worldKey === 'fantasy'
       ? '낯선 세계 안에서 캐릭터의 결을 흔들지 않고 동행을 시작한다.'
       : '짧은 장면 안에서 감정선과 거리감을 분명히 만든다.'
-  const startingLocation = world.promptProfile.starterLocations[0] || world.name
-  const worldTerms = world.promptProfile.worldTerms || []
+  const starterLocations = Array.isArray(world.promptProfile.starterLocations) ? world.promptProfile.starterLocations : []
+  const worldTerms = Array.isArray(world.promptProfile.worldTerms) ? world.promptProfile.worldTerms : []
+  const startingLocation = starterLocations[0] || world.name
   const firstScenePressure = worldKey === 'game'
     ? '즉시 행동해야 하는 전투 전 긴장'
     : worldKey === 'fantasy'
@@ -66,10 +67,13 @@ export const createInitialRoomState = ({ bridgeProfile, world }) => ({
   appearance: [],
   pose: [],
   futurePromises: [],
-  worldNotes: world ? world.promptProfile.worldTerms : [],
+  worldNotes: world && Array.isArray(world.promptProfile.worldTerms) ? world.promptProfile.worldTerms : [],
 })
 
 export const buildRoomPromptSnapshot = ({ character, world, bridgeProfile, state }) => {
+  const characterPersona = Array.isArray(character.promptProfile.persona) ? character.promptProfile.persona : []
+  const characterSpeech = Array.isArray(character.promptProfile.speechStyle) ? character.promptProfile.speechStyle : []
+  const characterImageSlots = Array.isArray(character.promptProfile.imageSlots) ? character.promptProfile.imageSlots : []
   const lines = [
     '### PLATFORM CONTRACT',
     '- 항상 한국어.',
@@ -79,20 +83,29 @@ export const buildRoomPromptSnapshot = ({ character, world, bridgeProfile, state
     '### CHARACTER',
     `- Name: ${character.name}`,
     `- Headline: ${character.headline || character.summary}`,
-    ...character.promptProfile.persona.map((item) => `- Persona: ${item}`),
-    ...character.promptProfile.speechStyle.map((item) => `- Speech: ${item}`),
+    ...characterPersona.map((item) => `- Persona: ${item}`),
+    ...characterSpeech.map((item) => `- Speech: ${item}`),
     `- Relationship baseline: ${character.promptProfile.relationshipBaseline}`,
   ]
 
+  if (characterImageSlots.length > 0) {
+    lines.push(
+      ...characterImageSlots.map((slot) => `- Image slot ${slot.slot}: ${slot.trigger || slot.usage || '기본 규칙 없음'}`)
+    )
+  }
+
   if (world) {
+    const worldRules = Array.isArray(world.promptProfile.rules) ? world.promptProfile.rules : []
+    const starterLocations = Array.isArray(world.promptProfile.starterLocations) ? world.promptProfile.starterLocations : []
+    const tone = world.promptProfile.tone || (Array.isArray(world.promptProfile.toneKeywords) ? world.promptProfile.toneKeywords.join(', ') : '')
     lines.push(
       '',
       '### WORLD',
       `- Name: ${world.name}`,
       `- Headline: ${world.headline || world.summary}`,
-      ...world.promptProfile.rules.map((item) => `- Rule: ${item}`),
-      `- Tone: ${world.promptProfile.tone}`,
-      `- Starter locations: ${world.promptProfile.starterLocations.join(', ')}`,
+      ...worldRules.map((item) => `- Rule: ${item}`),
+      `- Tone: ${tone}`,
+      `- Starter locations: ${starterLocations.join(', ')}`,
     )
   }
 

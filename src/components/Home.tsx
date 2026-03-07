@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { ArrowRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { platformApi } from '@/lib/platform/apiClient'
-import type { CharacterSummary, HomeFeedPayload, WorldSummary } from '@/lib/platform/types'
+import type { HomeFeedPayload } from '@/lib/platform/types'
 import { EmptyState, EntityCard, FilterChip, PageSection, PlatformShell } from '@/components/platform/PlatformScaffold'
 
 interface HomeProps {
@@ -20,25 +20,18 @@ export function Home({ user, userAvatarInitial, searchQuery, onSearchChange, onN
   void user
   void onAuthRequest
   const [tab, setTab] = useState<'characters' | 'worlds'>('characters')
-  const [filter, setFilter] = useState<'new' | 'tag' | ''>('')
+  const [filter, setFilter] = useState<'new' | 'popular' | ''>('')
   const [homePayload, setHomePayload] = useState<HomeFeedPayload | null>(null)
 
   useEffect(() => {
     let mounted = true
-    void platformApi.fetchHome(tab, searchQuery)
+    void platformApi.fetchHome(tab, searchQuery, filter)
       .then((data) => { if (mounted) setHomePayload(data) })
       .catch((error) => toast.error(error instanceof Error ? error.message : '홈을 불러오지 못했습니다.'))
     return () => { mounted = false }
-  }, [tab, searchQuery])
+  }, [filter, searchQuery, tab])
 
-  const items = useMemo(() => {
-    if (!homePayload) return [] as Array<CharacterSummary | WorldSummary>
-    const source = tab === 'characters' ? homePayload.home.characterFeed.items : homePayload.home.worldFeed.items
-    if (filter === 'new') {
-      return [...source].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
-    }
-    return source
-  }, [filter, homePayload, tab])
+  const items = tab === 'characters' ? homePayload?.home.characterFeed.items || [] : homePayload?.home.worldFeed.items || []
 
   const hero = homePayload?.home.hero
 
@@ -57,7 +50,7 @@ export function Home({ user, userAvatarInitial, searchQuery, onSearchChange, onN
           <div className="flex flex-col justify-center p-6 text-left lg:p-7">
             <div>
               <h1 className="text-[clamp(2rem,4vw,3.1rem)] font-semibold leading-[1.08] tracking-[-0.04em] text-white">{hero?.title || '미소노 미카'}</h1>
-              <p className="mt-3 max-w-2xl text-base leading-7 text-white/64">{hero?.subtitle || '친밀한 반말과 밝은 장난기가 중심인 인기 RP 캐릭터.'}</p>
+              <p className="mt-3 max-w-2xl text-base leading-7 text-white/64">{hero?.subtitle || ''}</p>
             </div>
             <div className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-white">
               상세 보기
@@ -77,7 +70,7 @@ export function Home({ user, userAvatarInitial, searchQuery, onSearchChange, onN
         }>
           <div className="flex flex-wrap gap-2">
             <FilterChip active={filter === 'new'} onClick={() => setFilter((prev) => prev === 'new' ? '' : 'new')}>신작</FilterChip>
-            <FilterChip active={filter === 'tag'} onClick={() => setFilter((prev) => prev === 'tag' ? '' : 'tag')}>태그</FilterChip>
+            <FilterChip active={filter === 'popular'} onClick={() => setFilter((prev) => prev === 'popular' ? '' : 'popular')}>인기</FilterChip>
           </div>
           {items.length === 0 ? (
             <EmptyState title="콘텐츠가 없습니다" description="검색어나 필터를 바꿔 다시 확인해보세요." />

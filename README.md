@@ -134,7 +134,14 @@ LOG_LEVEL=info
 
 ### 3) DB 초기화
 
-Supabase SQL Editor에서 `supabase_schema.sql` 실행
+Supabase SQL Editor에서 아래 migration을 실행하세요.
+
+```sql
+supabase/migrations/20260307_v3_character_world_reset.sql
+```
+
+- 기존 테이블이 이미 있는 운영 DB도 올릴 수 있도록 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` 기반으로 작성되어 있습니다.
+- 운영실을 쓰려면 `profiles.is_owner = true` 또는 `app_settings.owner_user_ids` 설정이 필요합니다.
 
 ### 4) 로컬 실행
 
@@ -185,6 +192,8 @@ npm run verify
 - 기본 Rate Limit: 60초당 30회(`RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX_REQUESTS`)
 - rate-limit key 저장 최대 개수: `RATE_LIMIT_MAX_KEYS` (기본 `5000`)
 - CORS는 기본적으로 `ALLOWED_ORIGINS` 기반 허용
+- 단, **같은 호스트에서 서빙된 프론트 → API 요청**은 명시 allowlist가 없어도 허용되도록 보강됨
+- 프론트와 API가 서로 다른 도메인/서브도메인이면 해당 프론트 Origin을 반드시 `ALLOWED_ORIGINS`에 추가해야 함
 - Origin 없는 호출 허용 여부: `ALLOW_NON_BROWSER_ORIGIN` (기본 `false`)
 - 요청 body 최대 크기: `REQUEST_BODY_MAX_BYTES` (기본 `32768`)
 - `X-Forwarded-For` 신뢰 여부: `TRUST_X_FORWARDED_FOR` (기본 `false`)

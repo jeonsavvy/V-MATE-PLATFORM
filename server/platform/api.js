@@ -170,7 +170,7 @@ export const handlePlatformApi = async ({ event, headers, startedAtMs, traceId }
 
   if (method === 'GET' && segments[1] === 'home') {
     const query = parseQuery(event.queryStringParameters);
-    return jsonOk({ headers, startedAtMs, body: await getPlatformStore().getHomePayload({ tab: query.tab, search: query.search }) });
+    return jsonOk({ headers, startedAtMs, body: await getPlatformStore().getHomePayload({ tab: query.tab, search: query.search, filter: query.filter }) });
   }
 
   if (method === 'GET' && segments[1] === 'characters' && !segments[2]) {
@@ -309,6 +309,10 @@ export const handlePlatformApi = async ({ event, headers, startedAtMs, traceId }
   if (method === 'GET' && segments[1] === 'ops' && segments[2] === 'dashboard') {
     const authResult = await resolveOptionalUser({ event, traceId, requireAuth: persistentStore.isPersistentPlatformAvailable() });
     if (!authResult.ok) return jsonError({ statusCode: authResult.statusCode || 401, headers, startedAtMs, traceId, error: authResult.error || 'Authentication required.', errorCode: authResult.errorCode || 'AUTH_REQUIRED', retryable: Boolean(authResult.retryable) });
+    const isOwner = await getPlatformStore().isOwnerUser?.({ event, userId: authResult.userId });
+    if (persistentStore.isPersistentPlatformAvailable() && !isOwner) {
+      return jsonError({ statusCode: 403, headers, startedAtMs, traceId, error: 'Owner access required.', errorCode: 'OWNER_FORBIDDEN' });
+    }
     return jsonOk({ headers, startedAtMs, body: await getPlatformStore().getOpsDashboard({ event, userId: authResult.userId }) });
   }
 
@@ -317,7 +321,23 @@ export const handlePlatformApi = async ({ event, headers, startedAtMs, traceId }
     if (!status) return jsonError({ statusCode: 404, headers, startedAtMs, traceId, error: 'Not found.', errorCode: 'NOT_FOUND' });
     const authResult = await resolveOptionalUser({ event, traceId, requireAuth: persistentStore.isPersistentPlatformAvailable() });
     if (!authResult.ok) return jsonError({ statusCode: authResult.statusCode || 401, headers, startedAtMs, traceId, error: authResult.error || 'Authentication required.', errorCode: authResult.errorCode || 'AUTH_REQUIRED', retryable: Boolean(authResult.retryable) });
+    const isOwner = await getPlatformStore().isOwnerUser?.({ event, userId: authResult.userId });
+    if (persistentStore.isPersistentPlatformAvailable() && !isOwner) {
+      return jsonError({ statusCode: 403, headers, startedAtMs, traceId, error: 'Owner access required.', errorCode: 'OWNER_FORBIDDEN' });
+    }
     const ok = await getPlatformStore().setContentVisibility({ event, entityType: segments[3], id: segments[4], status });
+    if (!ok) return jsonError({ statusCode: 404, headers, startedAtMs, traceId, error: 'Content not found.', errorCode: 'CONTENT_NOT_FOUND' });
+    return jsonOk({ headers, startedAtMs, body: { ok: true } });
+  }
+
+  if (method === 'DELETE' && segments[1] === 'ops' && segments[2] === 'content' && segments[3] && segments[4]) {
+    const authResult = await resolveOptionalUser({ event, traceId, requireAuth: persistentStore.isPersistentPlatformAvailable() });
+    if (!authResult.ok) return jsonError({ statusCode: authResult.statusCode || 401, headers, startedAtMs, traceId, error: authResult.error || 'Authentication required.', errorCode: authResult.errorCode || 'AUTH_REQUIRED', retryable: Boolean(authResult.retryable) });
+    const isOwner = await getPlatformStore().isOwnerUser?.({ event, userId: authResult.userId });
+    if (persistentStore.isPersistentPlatformAvailable() && !isOwner) {
+      return jsonError({ statusCode: 403, headers, startedAtMs, traceId, error: 'Owner access required.', errorCode: 'OWNER_FORBIDDEN' });
+    }
+    const ok = await getPlatformStore().deleteContent({ event, entityType: segments[3], id: segments[4] });
     if (!ok) return jsonError({ statusCode: 404, headers, startedAtMs, traceId, error: 'Content not found.', errorCode: 'CONTENT_NOT_FOUND' });
     return jsonOk({ headers, startedAtMs, body: { ok: true } });
   }
@@ -325,6 +345,34 @@ export const handlePlatformApi = async ({ event, headers, startedAtMs, traceId }
   if (method === 'POST' && segments[1] === 'ops' && segments[2] === 'home' && segments[3] === 'banner') {
     const authResult = await resolveOptionalUser({ event, traceId, requireAuth: persistentStore.isPersistentPlatformAvailable() });
     if (!authResult.ok) return jsonError({ statusCode: authResult.statusCode || 401, headers, startedAtMs, traceId, error: authResult.error || 'Authentication required.', errorCode: authResult.errorCode || 'AUTH_REQUIRED', retryable: Boolean(authResult.retryable) });
+    const isOwner = await getPlatformStore().isOwnerUser?.({ event, userId: authResult.userId });
+    if (persistentStore.isPersistentPlatformAvailable() && !isOwner) {
+      return jsonError({ statusCode: 403, headers, startedAtMs, traceId, error: 'Owner access required.', errorCode: 'OWNER_FORBIDDEN' });
+    }
+    const body = parseJsonBody(event.body);
+    if (!body) return jsonError({ statusCode: 400, headers, startedAtMs, traceId, error: 'Invalid request body.', errorCode: 'INVALID_REQUEST_BODY' });
+    return jsonOk({ headers, startedAtMs, body: { home: await getPlatformStore().setHomeHeroTarget({ event, targetPath: String(body.targetPath || '') }) } });
+  }
+
+  if (method === 'POST' && segments[1] === 'ops' && segments[2] === 'home' && segments[3] === 'banner-mode') {
+    const authResult = await resolveOptionalUser({ event, traceId, requireAuth: persistentStore.isPersistentPlatformAvailable() });
+    if (!authResult.ok) return jsonError({ statusCode: authResult.statusCode || 401, headers, startedAtMs, traceId, error: authResult.error || 'Authentication required.', errorCode: authResult.errorCode || 'AUTH_REQUIRED', retryable: Boolean(authResult.retryable) });
+    const isOwner = await getPlatformStore().isOwnerUser?.({ event, userId: authResult.userId });
+    if (persistentStore.isPersistentPlatformAvailable() && !isOwner) {
+      return jsonError({ statusCode: 403, headers, startedAtMs, traceId, error: 'Owner access required.', errorCode: 'OWNER_FORBIDDEN' });
+    }
+    const body = parseJsonBody(event.body);
+    if (!body) return jsonError({ statusCode: 400, headers, startedAtMs, traceId, error: 'Invalid request body.', errorCode: 'INVALID_REQUEST_BODY' });
+    return jsonOk({ headers, startedAtMs, body: { home: await getPlatformStore().setHomeHeroMode({ event, mode: String(body.mode || 'auto') }) } });
+  }
+
+  if (method === 'POST' && segments[1] === 'ops' && segments[2] === 'home' && segments[3] === 'banner-target') {
+    const authResult = await resolveOptionalUser({ event, traceId, requireAuth: persistentStore.isPersistentPlatformAvailable() });
+    if (!authResult.ok) return jsonError({ statusCode: authResult.statusCode || 401, headers, startedAtMs, traceId, error: authResult.error || 'Authentication required.', errorCode: authResult.errorCode || 'AUTH_REQUIRED', retryable: Boolean(authResult.retryable) });
+    const isOwner = await getPlatformStore().isOwnerUser?.({ event, userId: authResult.userId });
+    if (persistentStore.isPersistentPlatformAvailable() && !isOwner) {
+      return jsonError({ statusCode: 403, headers, startedAtMs, traceId, error: 'Owner access required.', errorCode: 'OWNER_FORBIDDEN' });
+    }
     const body = parseJsonBody(event.body);
     if (!body) return jsonError({ statusCode: 400, headers, startedAtMs, traceId, error: 'Invalid request body.', errorCode: 'INVALID_REQUEST_BODY' });
     return jsonOk({ headers, startedAtMs, body: { home: await getPlatformStore().setHomeHeroTarget({ event, targetPath: String(body.targetPath || '') }) } });

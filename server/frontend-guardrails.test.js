@@ -277,3 +277,47 @@ test('platform shell keeps ops inside create section instead of top-level nav', 
   assert.equal(source.includes("user ? [...baseNav, { label: '운영실'"), false);
   assert.ok(source.includes("{ label: '운영실', path: '/ops' }"));
 });
+
+test('home uses latest and popular filters only', async () => {
+  const homePath = path.join(srcRoot, 'components/Home.tsx');
+  const source = await readFile(homePath, 'utf8');
+
+  assert.ok(source.includes('신작'));
+  assert.ok(source.includes('인기'));
+  assert.equal(source.includes('태그'), false);
+});
+
+test('character builder exposes structured authoring sections and image slots', async () => {
+  const pagesPath = path.join(srcRoot, 'components/platform/Pages.tsx');
+  const source = await readFile(pagesPath, 'utf8');
+
+  assert.ok(source.includes('기본 정보'));
+  assert.ok(source.includes('캐릭터 프로필'));
+  assert.ok(source.includes('프롬프트 엔지니어링'));
+  assert.ok(source.includes('이미지 세트'));
+  assert.ok(source.includes('월드 연결'));
+  assert.ok(source.includes('normal'));
+  assert.ok(source.includes('happy'));
+  assert.ok(source.includes('angry'));
+  assert.ok(source.includes('사용 조건'));
+  assert.equal(source.includes('대표 이미지 URL 또는 업로드 결과 URL'), false);
+});
+
+test('ops page exposes banner auto/manual controls and delete actions', async () => {
+  const pagesPath = path.join(srcRoot, 'components/platform/Pages.tsx');
+  const source = await readFile(pagesPath, 'utf8');
+
+  assert.ok(source.includes('메인 배너'));
+  assert.ok(source.includes('자동'));
+  assert.ok(source.includes('수동'));
+  assert.ok(source.includes('배너 지정'));
+  assert.ok(source.includes('삭제'));
+});
+
+test('footer removes border divider and keeps copyright only', async () => {
+  const scaffoldPath = path.join(srcRoot, 'components/platform/PlatformScaffold.tsx');
+  const source = await readFile(scaffoldPath, 'utf8');
+
+  assert.equal(source.includes('<footer className="border-t'), false);
+  assert.ok(source.includes('© V-MATE'));
+});

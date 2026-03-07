@@ -31,6 +31,7 @@ export interface EntitySummary {
 export interface CharacterSummary extends EntitySummary {
   entityType: 'character'
   avatarImageUrl: string
+  imageSlots?: CharacterImageSlot[]
 }
 
 export interface WorldSummary extends EntitySummary {
@@ -47,10 +48,21 @@ export interface CharacterWorldLinkSummary {
   defaultRelationshipContext?: string
 }
 
+export interface CharacterImageSlot {
+  id: string
+  slot: string
+  usage: string
+  trigger: string
+  priority: number
+  thumbUrl?: string
+  cardUrl?: string
+  detailUrl?: string
+}
+
 export interface HomeFeedPayload {
   home: {
     defaultTab: 'characters'
-    filterChips: ['신작', '태그']
+    filterChips: ['신작', '인기']
     hero: {
       title: string
       subtitle: string
@@ -70,6 +82,7 @@ export interface CharacterDetail extends CharacterSummary {
   profileSections: Array<{ title: string; body: string }>
   gallery: string[]
   worlds: CharacterWorldLinkSummary[]
+  imageSlots: CharacterImageSlot[]
 }
 
 export interface WorldDetail extends WorldSummary {
@@ -145,6 +158,7 @@ export interface OwnerOpsDashboard {
     hiddenWorlds: WorldSummary[]
   }
   home: {
+    heroMode: 'auto' | 'manual'
     heroTargetPath: string
   }
 }

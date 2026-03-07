@@ -81,9 +81,9 @@ const request = async <T>(path: string, init?: RequestInit & { auth?: boolean; f
 }
 
 export const platformApi = {
-  fetchHome: (tab: 'characters' | 'worlds' = 'characters', search = '') => request<HomeFeedPayload>(`/home?tab=${tab}&search=${encodeURIComponent(search)}`, { fallback: () => demoPlatform.home(tab) }),
-  fetchCharacters: (search = '', filter: 'new' | 'tag' | '' = '') => request<{ items: CharacterSummary[] }>(`/characters?search=${encodeURIComponent(search)}&filter=${encodeURIComponent(filter)}`, { fallback: () => ({ items: demoPlatform.characters(search) }) }),
-  fetchWorlds: (search = '', filter: 'new' | 'tag' | '' = '') => request<{ items: WorldSummary[] }>(`/worlds?search=${encodeURIComponent(search)}&filter=${encodeURIComponent(filter)}`, { fallback: () => ({ items: demoPlatform.worlds(search) }) }),
+  fetchHome: (tab: 'characters' | 'worlds' = 'characters', search = '', filter: 'new' | 'popular' | '' = '') => request<HomeFeedPayload>(`/home?tab=${tab}&search=${encodeURIComponent(search)}&filter=${encodeURIComponent(filter)}`, { fallback: () => demoPlatform.home(tab, filter) }),
+  fetchCharacters: (search = '', filter: 'new' | 'popular' | '' = '') => request<{ items: CharacterSummary[] }>(`/characters?search=${encodeURIComponent(search)}&filter=${encodeURIComponent(filter)}`, { fallback: () => ({ items: demoPlatform.characters(search, filter) }) }),
+  fetchWorlds: (search = '', filter: 'new' | 'popular' | '' = '') => request<{ items: WorldSummary[] }>(`/worlds?search=${encodeURIComponent(search)}&filter=${encodeURIComponent(filter)}`, { fallback: () => ({ items: demoPlatform.worlds(search, filter) }) }),
   fetchCharacter: (slug: string) => request<{ item: CharacterDetail }>(`/characters/${slug}`, { fallback: () => ({ item: demoPlatform.character(slug)! }) }),
   fetchWorld: (slug: string) => request<{ item: WorldDetail }>(`/worlds/${slug}`, { fallback: () => ({ item: demoPlatform.world(slug)! }) }),
   fetchCharacterWorldLinks: (slug: string) => request<{ items: CharacterWorldLinkSummary[] }>(`/characters/${slug}/world-links`, { fallback: () => ({ items: demoPlatform.worldLinks(slug) }) }),
@@ -105,6 +105,9 @@ export const platformApi = {
     sourceType: string
     coverImageUrl?: string
     avatarImageUrl?: string
+    profileJson?: Record<string, unknown>
+    speechStyleJson?: Record<string, unknown>
+    promptProfileJson?: Record<string, unknown>
     assets?: Array<{ kind: string; url: string; width: number; height: number }>
   }) => request<{ item: CharacterSummary }>('/characters', { method: 'POST', auth: true, body: JSON.stringify(payload) }),
   createWorld: (payload: {
@@ -116,6 +119,7 @@ export const platformApi = {
     sourceType: string
     coverImageUrl?: string
     worldRulesMarkdown?: string
+    promptProfileJson?: Record<string, unknown>
     assets?: Array<{ kind: string; url: string; width: number; height: number }>
   }) => request<{ item: WorldSummary }>('/worlds', { method: 'POST', auth: true, body: JSON.stringify(payload) }),
   createCharacterWorldLink: (payload: {
@@ -133,4 +137,7 @@ export const platformApi = {
   toggleBookmark: (entityType: EntityType, entityRef: string) => request<{ active: boolean; id: string }>('/bookmarks', { method: 'POST', auth: true, body: JSON.stringify({ entityType, entityRef }) }),
   hideContent: (entityType: EntityType, id: string) => request<{ ok: boolean }>(`/ops/content/${entityType}/${id}/hide`, { method: 'POST', auth: true, body: JSON.stringify({}) }),
   showContent: (entityType: EntityType, id: string) => request<{ ok: boolean }>(`/ops/content/${entityType}/${id}/show`, { method: 'POST', auth: true, body: JSON.stringify({}) }),
+  deleteContent: (entityType: EntityType, id: string) => request<{ ok: boolean }>(`/ops/content/${entityType}/${id}`, { method: 'DELETE', auth: true }),
+  setBannerMode: (mode: 'auto' | 'manual') => request<{ home: { heroMode: 'auto' | 'manual'; heroTargetPath: string } }>('/ops/home/banner-mode', { method: 'POST', auth: true, body: JSON.stringify({ mode }) }),
+  setBannerTarget: (targetPath: string) => request<{ home: { heroMode: 'auto' | 'manual'; heroTargetPath: string } }>('/ops/home/banner-target', { method: 'POST', auth: true, body: JSON.stringify({ targetPath }) }),
 }

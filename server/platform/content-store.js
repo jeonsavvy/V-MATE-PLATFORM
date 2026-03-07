@@ -16,7 +16,10 @@ const createdLinks = new Map();
 const rooms = new Map();
 const recentViewsByUser = new Map();
 const bookmarksByUser = new Map();
-const featuredHomeState = { heroTargetPath: `/characters/${platformCharacters[0].slug}` };
+const featuredHomeState = {
+  heroMode: 'auto',
+  heroTargetPath: `/characters/${platformCharacters[0].slug}`,
+};
 
 const nowIso = () => new Date().toISOString();
 
@@ -47,6 +50,7 @@ const summarizeCharacter = (item) => ({
   favoriteCount: item.favoriteCount,
   chatStartCount: item.chatStartCount,
   updatedAt: item.updatedAt,
+  imageSlots: Array.isArray(item.promptProfile?.imageSlots) ? clone(item.promptProfile.imageSlots) : [],
 });
 
 const summarizeWorld = (item) => ({
@@ -103,7 +107,7 @@ export const listCharacters = ({ search = '', filter = '' } = {}) => {
   if (filter === 'new') {
     return items.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
   }
-  return items.sort((a, b) => b.chatStartCount - a.chatStartCount);
+  return items.sort((a, b) => b.chatStartCount - a.chatStartCount || b.favoriteCount - a.favoriteCount || Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
 };
 
 export const listWorlds = ({ search = '', filter = '' } = {}) => {
@@ -116,26 +120,27 @@ export const listWorlds = ({ search = '', filter = '' } = {}) => {
   if (filter === 'new') {
     return items.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
   }
-  return items.sort((a, b) => b.chatStartCount - a.chatStartCount);
+  return items.sort((a, b) => b.chatStartCount - a.chatStartCount || b.favoriteCount - a.favoriteCount || Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
 };
 
-export const getHomePayload = ({ tab = 'characters', search = '' } = {}) => {
-  const characters = listCharacters({ search });
-  const worlds = listWorlds({ search });
-  const heroPath = featuredHomeState.heroTargetPath;
-  const heroCharacter = characters[0];
-  const heroWorld = worlds[0];
-  const hero = heroPath.startsWith('/worlds/') ? heroWorld : heroCharacter;
+export const getHomePayload = ({ tab = 'characters', search = '', filter = '' } = {}) => {
+  const characters = listCharacters({ search, filter });
+  const worlds = listWorlds({ search, filter });
+  const autoHero = [...characters, ...worlds].sort((a, b) => b.chatStartCount - a.chatStartCount || b.favoriteCount - a.favoriteCount || Date.parse(b.updatedAt) - Date.parse(a.updatedAt))[0];
+  const manualHero = featuredHomeState.heroTargetPath.startsWith('/worlds/')
+    ? worlds.find((item) => featuredHomeState.heroTargetPath.endsWith(`/${item.slug}`))
+    : characters.find((item) => featuredHomeState.heroTargetPath.endsWith(`/${item.slug}`));
+  const hero = featuredHomeState.heroMode === 'manual' && manualHero ? manualHero : autoHero;
 
   return {
     home: {
       defaultTab: 'characters',
-      filterChips: ['신작', '태그'],
+      filterChips: ['신작', '인기'],
       hero: {
         title: hero?.name || '지금 많이 보는 캐릭터',
         subtitle: hero?.headline || hero?.summary || '',
         coverImageUrl: hero?.coverImageUrl || '/world_tokyo.svg',
-        targetPath: heroPath,
+        targetPath: hero?.entityType === 'world' ? `/worlds/${hero.slug}` : `/characters/${hero?.slug || platformCharacters[0].slug}`,
       },
       characterFeed: { items: characters },
       worldFeed: { items: worlds },
@@ -291,6 +296,7 @@ export const createCharacter = ({ userId, payload }) => {
       roleTendency: 'support',
       conflictStyle: 'emotion-first',
       worldFitTags: [],
+      ...(payload.promptProfileJson || {}),
     },
   };
   createdCharacters.set(item.id, item);
@@ -326,6 +332,7 @@ export const createWorld = ({ userId, payload }) => {
       tone: payload.headline || payload.summary,
       starterLocations: ['첫 장면 위치'],
       worldTerms: payload.tags || [],
+      ...(payload.promptProfileJson || {}),
     },
   };
   createdWorlds.set(item.id, item);
@@ -453,7 +460,7 @@ export const getOpsDashboard = () => ({
     visibleWorlds: allWorlds().filter((item) => item.displayStatus !== 'hidden').map(summarizeWorld),
     hiddenWorlds: allWorlds().filter((item) => item.displayStatus === 'hidden').map(summarizeWorld),
   },
-  home: { heroTargetPath: featuredHomeState.heroTargetPath },
+  home: { heroMode: featuredHomeState.heroMode, heroTargetPath: featuredHomeState.heroTargetPath },
 });
 
 export const setContentVisibility = ({ entityType, id, status }) => {
@@ -467,9 +474,48 @@ export const setContentVisibility = ({ entityType, id, status }) => {
   return true;
 };
 
+export const deleteContent = async ({ entityType, id }) => {
+  const collections = entityType === 'character'
+    ? [createdCharacters, seedCharacterMap, seedCharacterSlugMap]
+    : [createdWorlds, seedWorldMap, seedWorldSlugMap];
+
+  for (const collection of collections) {
+    for (const [key, item] of collection.entries()) {
+      if (item.id === id || item.slug === id) {
+        collection.delete(key);
+        if (entityType === 'character') {
+          for (const [linkKey, link] of seedLinkMap.entries()) {
+            if (link.characterSlug === item.slug) seedLinkMap.delete(linkKey);
+          }
+          for (const [linkKey, link] of createdLinks.entries()) {
+            if (link.characterSlug === item.slug) createdLinks.delete(linkKey);
+          }
+        } else {
+          for (const [linkKey, link] of seedLinkMap.entries()) {
+            if (link.worldSlug === item.slug) seedLinkMap.delete(linkKey);
+          }
+          for (const [linkKey, link] of createdLinks.entries()) {
+            if (link.worldSlug === item.slug) createdLinks.delete(linkKey);
+          }
+        }
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+export const isOwnerUser = async () => true;
+
 export const setHomeHeroTarget = (input) => {
   const path = typeof input === 'string' ? input : input?.targetPath
   featuredHomeState.heroTargetPath = String(path || featuredHomeState.heroTargetPath);
+  return clone(featuredHomeState);
+};
+
+export const setHomeHeroMode = (input) => {
+  const mode = typeof input === 'string' ? input : input?.mode;
+  featuredHomeState.heroMode = mode === 'manual' ? 'manual' : 'auto';
   return clone(featuredHomeState);
 };
 
@@ -494,6 +540,7 @@ export const resetPlatformStoreForTests = () => {
   rooms.clear();
   recentViewsByUser.clear();
   bookmarksByUser.clear();
+  featuredHomeState.heroMode = 'auto';
   featuredHomeState.heroTargetPath = `/characters/${platformSeed.characters[0].slug}`;
   for (const character of seedCharacterMap.values()) {
     const seed = platformCharacters.find((item) => item.id === character.id);

@@ -86,7 +86,10 @@ const readRawBody = (req) =>
 
 const toEvent = async (req, url) => ({
     httpMethod: req.method || 'GET',
-    headers: normalizeHeaders(req.headers),
+    headers: {
+        ...normalizeHeaders(req.headers),
+        'x-v-mate-request-origin': url.origin,
+    },
     path: url.pathname,
     queryStringParameters: Object.fromEntries(url.searchParams.entries()),
     body: await readRawBody(req),
@@ -126,7 +129,7 @@ export const createCloudRunServer = ({
         const requestStartedAt = Date.now();
         const requestTraceId = createTraceId();
         const origin = req.headers?.origin;
-        const originAllowed = isOriginAllowed(origin);
+        const originAllowed = isOriginAllowed(origin, url.origin);
         const responseHeaders = {
             ...buildHeaders(originAllowed, origin),
             'X-V-MATE-Trace-Id': requestTraceId,

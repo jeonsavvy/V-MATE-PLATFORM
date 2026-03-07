@@ -42,6 +42,12 @@ create table if not exists public.profiles (
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
+alter table public.profiles add column if not exists display_name text;
+alter table public.profiles add column if not exists avatar_url text;
+alter table public.profiles add column if not exists bio text;
+alter table public.profiles add column if not exists is_owner boolean not null default false;
+alter table public.profiles add column if not exists updated_at timestamp with time zone default timezone('utc'::text, now()) not null;
+
 alter table public.profiles enable row level security;
 
 do $$ begin
@@ -56,6 +62,39 @@ do $$ begin
     using (auth.uid() = user_id)
     with check (auth.uid() = user_id);
 exception when duplicate_object then null; end $$;
+
+create table if not exists public.app_settings (
+  key text primary key,
+  value_json jsonb not null default '{}'::jsonb,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+create or replace function public.is_owner_user()
+returns boolean
+language sql
+stable
+as $$
+  with owner_setting as (
+    select value_json
+    from public.app_settings
+    where key = 'owner_user_ids'
+    limit 1
+  )
+  select
+    coalesce((select p.is_owner from public.profiles p where p.user_id = auth.uid()), false)
+    or exists (
+      select 1
+      from owner_setting s,
+      lateral jsonb_array_elements_text(
+        case
+          when jsonb_typeof(s.value_json) = 'array' then s.value_json
+          when jsonb_typeof(s.value_json) = 'object' and jsonb_typeof(s.value_json -> 'ids') = 'array' then s.value_json -> 'ids'
+          else '[]'::jsonb
+        end
+      ) as owner_id(value)
+      where owner_id.value = auth.uid()::text
+    );
+$$;
 
 create table if not exists public.characters (
   id uuid primary key default gen_random_uuid(),
@@ -79,6 +118,25 @@ create table if not exists public.characters (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
+
+alter table public.characters add column if not exists owner_user_id uuid references auth.users on delete cascade;
+alter table public.characters add column if not exists slug text;
+alter table public.characters add column if not exists name text;
+alter table public.characters add column if not exists headline text;
+alter table public.characters add column if not exists summary text not null default '';
+alter table public.characters add column if not exists cover_image_url text;
+alter table public.characters add column if not exists avatar_image_url text;
+alter table public.characters add column if not exists visibility text not null default 'private';
+alter table public.characters add column if not exists display_status text not null default 'draft';
+alter table public.characters add column if not exists source_type text not null default 'original';
+alter table public.characters add column if not exists tags text[] not null default '{}';
+alter table public.characters add column if not exists profile_json jsonb not null default '{}'::jsonb;
+alter table public.characters add column if not exists speech_style_json jsonb not null default '{}'::jsonb;
+alter table public.characters add column if not exists prompt_profile_json jsonb not null default '{}'::jsonb;
+alter table public.characters add column if not exists favorite_count integer not null default 0;
+alter table public.characters add column if not exists chat_start_count integer not null default 0;
+alter table public.characters add column if not exists published_at timestamp with time zone;
+alter table public.characters add column if not exists updated_at timestamp with time zone default timezone('utc'::text, now()) not null;
 
 create index if not exists idx_characters_owner_updated on public.characters (owner_user_id, updated_at desc);
 create index if not exists idx_characters_visible_updated on public.characters (display_status, updated_at desc);
@@ -104,6 +162,19 @@ do $$ begin
     with check (auth.uid() = owner_user_id);
 exception when duplicate_object then null; end $$;
 
+do $$ begin
+  create policy "Owner users can manage all characters"
+    on public.characters for all
+    using (public.is_owner_user())
+    with check (public.is_owner_user());
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create policy "Users can delete their own characters"
+    on public.characters for delete
+    using (auth.uid() = owner_user_id or public.is_owner_user());
+exception when duplicate_object then null; end $$;
+
 create table if not exists public.worlds (
   id uuid primary key default gen_random_uuid(),
   owner_user_id uuid references auth.users on delete cascade not null,
@@ -124,6 +195,23 @@ create table if not exists public.worlds (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
+
+alter table public.worlds add column if not exists owner_user_id uuid references auth.users on delete cascade;
+alter table public.worlds add column if not exists slug text;
+alter table public.worlds add column if not exists name text;
+alter table public.worlds add column if not exists headline text;
+alter table public.worlds add column if not exists summary text not null default '';
+alter table public.worlds add column if not exists cover_image_url text;
+alter table public.worlds add column if not exists visibility text not null default 'private';
+alter table public.worlds add column if not exists display_status text not null default 'draft';
+alter table public.worlds add column if not exists source_type text not null default 'original';
+alter table public.worlds add column if not exists tags text[] not null default '{}';
+alter table public.worlds add column if not exists world_rules_markdown text;
+alter table public.worlds add column if not exists prompt_profile_json jsonb not null default '{}'::jsonb;
+alter table public.worlds add column if not exists favorite_count integer not null default 0;
+alter table public.worlds add column if not exists chat_start_count integer not null default 0;
+alter table public.worlds add column if not exists published_at timestamp with time zone;
+alter table public.worlds add column if not exists updated_at timestamp with time zone default timezone('utc'::text, now()) not null;
 
 create index if not exists idx_worlds_owner_updated on public.worlds (owner_user_id, updated_at desc);
 create index if not exists idx_worlds_visible_updated on public.worlds (display_status, updated_at desc);
@@ -147,6 +235,19 @@ do $$ begin
     on public.worlds for update
     using (auth.uid() = owner_user_id)
     with check (auth.uid() = owner_user_id);
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create policy "Owner users can manage all worlds"
+    on public.worlds for all
+    using (public.is_owner_user())
+    with check (public.is_owner_user());
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create policy "Users can delete their own worlds"
+    on public.worlds for delete
+    using (auth.uid() = owner_user_id or public.is_owner_user());
 exception when duplicate_object then null; end $$;
 
 create table if not exists public.character_world_links (
@@ -198,6 +299,13 @@ do $$ begin
     on public.character_world_links for update
     using (auth.uid() = owner_user_id)
     with check (auth.uid() = owner_user_id);
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create policy "Owner users can manage all links"
+    on public.character_world_links for all
+    using (public.is_owner_user())
+    with check (public.is_owner_user());
 exception when duplicate_object then null; end $$;
 
 create table if not exists public.rooms (
@@ -386,8 +494,29 @@ create table if not exists public.app_settings (
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
+alter table public.app_settings add column if not exists value_json jsonb not null default '{}'::jsonb;
+alter table public.app_settings add column if not exists updated_at timestamp with time zone default timezone('utc'::text, now()) not null;
+alter table public.app_settings enable row level security;
+
+do $$ begin
+  create policy "Public can read app settings"
+    on public.app_settings for select
+    using (true);
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create policy "Owner users can write app settings"
+    on public.app_settings for all
+    using (public.is_owner_user())
+    with check (public.is_owner_user());
+exception when duplicate_object then null; end $$;
+
 insert into public.app_settings (key, value_json)
-values ('home.hero', jsonb_build_object('targetPath', '/characters/mika'))
+values ('owner_user_ids', '[]'::jsonb)
+on conflict (key) do nothing;
+
+insert into public.app_settings (key, value_json)
+values ('home.hero', jsonb_build_object('mode', 'auto', 'targetPath', '/characters/mika'))
 on conflict (key) do nothing;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

@@ -51,3 +51,14 @@ test('.gitignore no longer ignores tracked sql migrations globally', async () =>
 
   assert.equal(gitignore.includes('*.sql'), false);
 });
+
+test('platform migration upgrades existing schemas via alter-table steps', async () => {
+  const migration = await readUtf8('supabase/migrations/20260307_v3_character_world_reset.sql');
+
+  assert.ok(migration.includes('alter table public.characters add column if not exists display_status'));
+  assert.ok(migration.includes('alter table public.worlds add column if not exists display_status'));
+  assert.ok(migration.includes('alter table public.profiles add column if not exists is_owner'));
+  assert.ok(migration.includes('create table if not exists public.app_settings'));
+  assert.ok(migration.includes('create or replace function public.is_owner_user()'));
+  assert.ok(migration.includes('create policy "Owner users can write app settings"'));
+});

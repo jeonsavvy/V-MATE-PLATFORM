@@ -115,7 +115,7 @@ export function PlatformShell({
           </header>
 
           <main className="px-6 py-6">{children}</main>
-          <footer className="border-t border-white/8 px-6 py-6 text-center text-sm text-white/42">© V-MATE</footer>
+          <footer className="px-6 py-6 text-center text-sm text-white/42">© V-MATE</footer>
         </div>
       </div>
     </div>

@@ -106,7 +106,10 @@ const toEvent = async (request, maxBodyBytes) => {
 
   return {
     httpMethod: request.method,
-    headers: Object.fromEntries(request.headers.entries()),
+    headers: {
+      ...Object.fromEntries(request.headers.entries()),
+      'x-v-mate-request-origin': url.origin,
+    },
     path: url.pathname,
     queryStringParameters: Object.fromEntries(url.searchParams.entries()),
     body,
@@ -129,7 +132,7 @@ const handleChatApi = async (request, env, chatHandlerImpl, chatHandlerContext) 
   const requestStartedAt = Date.now();
   const requestTraceId = createTraceId();
   const origin = request.headers.get("origin");
-  const originAllowed = isOriginAllowed(origin);
+  const originAllowed = isOriginAllowed(origin, new URL(request.url).origin);
   const headers = {
     ...buildHeaders(originAllowed, origin),
     "X-V-MATE-Trace-Id": requestTraceId,
@@ -197,7 +200,7 @@ const handlePlatformApiRequest = async (request, env) => {
   const requestStartedAt = Date.now();
   const requestTraceId = createTraceId();
   const origin = request.headers.get("origin");
-  const originAllowed = isOriginAllowed(origin);
+  const originAllowed = isOriginAllowed(origin, new URL(request.url).origin);
   const headers = {
     ...buildHeaders(originAllowed, origin),
     "X-V-MATE-Trace-Id": requestTraceId,

@@ -9,6 +9,8 @@ export interface ResizedImageAsset {
   width: number
   height: number
   dataUrl: string
+  sourceWidth: number
+  sourceHeight: number
 }
 
 const loadImage = (file: File): Promise<HTMLImageElement> =>
@@ -71,6 +73,8 @@ export const createImageVariants = async ({
       width: variant.width,
       height: variant.height,
       dataUrl,
+      sourceWidth: image.width,
+      sourceHeight: image.height,
     }
   })
 }

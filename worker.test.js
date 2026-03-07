@@ -72,10 +72,28 @@ test('serves platform home api payload from /api/home', async () => {
   assert.equal(response.headers.get('access-control-allow-origin'), 'http://localhost:5173');
   const payload = await response.json();
   assert.equal(payload.home?.defaultTab, 'characters');
-  assert.deepEqual(payload.home?.filterChips, ['신작', '태그']);
+  assert.deepEqual(payload.home?.filterChips, ['신작', '인기']);
   assert.equal(Array.isArray(payload.home?.characterFeed?.items), true);
   assert.equal(Array.isArray(payload.home?.worldFeed?.items), true);
   assert.equal('presetShelves' in payload, false);
+});
+
+test('allows same-host origin for platform api even when not explicitly allowlisted', async () => {
+  const request = new Request('https://play.vmate.example/api/home', {
+    method: 'GET',
+    headers: {
+      Origin: 'https://play.vmate.example',
+    },
+  });
+
+  const response = await worker.fetch(request, {
+    ALLOWED_ORIGINS: 'https://v-mate.jeonsavvy.workers.dev',
+    ALLOW_ALL_ORIGINS: 'false',
+    ALLOW_NON_BROWSER_ORIGIN: 'false',
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('access-control-allow-origin'), 'https://play.vmate.example');
 });
 
 test('returns structured 405 when /api/chat is requested with GET', async () => {

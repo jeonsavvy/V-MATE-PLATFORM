@@ -85,6 +85,7 @@ const summarizeCharacter = (row) => ({
   favoriteCount: Number(row.favorite_count || 0),
   chatStartCount: Number(row.chat_start_count || 0),
   updatedAt: row.updated_at || nowIso(),
+  imageSlots: Array.isArray(row.prompt_profile_json?.imageSlots) ? clone(row.prompt_profile_json.imageSlots) : [],
 });
 
 const summarizeWorld = (row) => ({
@@ -125,7 +126,7 @@ const sortByFilter = (items, filter) => {
   if (filter === 'new') {
     return [...items].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
   }
-  return [...items].sort((a, b) => b.chatStartCount - a.chatStartCount);
+  return [...items].sort((a, b) => b.chatStartCount - a.chatStartCount || b.favoriteCount - a.favoriteCount || Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
 };
 
 export const listCharacters = async ({ search = '', filter = '' } = {}) => {
@@ -149,29 +150,70 @@ const getSetting = async (client, key) => {
   return data?.value_json || null;
 };
 
-export const getHomePayload = async ({ tab = 'characters', search = '' } = {}) => {
+const resolveStoragePathFromPublicUrl = (url) => {
+  try {
+    const parsed = new URL(String(url || ''));
+    const marker = `/object/public/${STORAGE_BUCKET}/`;
+    const index = parsed.pathname.indexOf(marker);
+    if (index === -1) return null;
+    return decodeURIComponent(parsed.pathname.slice(index + marker.length));
+  } catch {
+    return null;
+  }
+};
+
+const removeStorageObjectsByUrls = async ({ client, urls }) => {
+  const paths = urls.map(resolveStoragePathFromPublicUrl).filter(Boolean);
+  if (!paths.length) return;
+  const { error } = await client.storage.from(STORAGE_BUCKET).remove(paths);
+  if (error) throw error;
+};
+
+export const isOwnerUser = async ({ event, userId }) => {
+  const client = await userClient(event);
+  if (!client || !userId) return false;
+  const [{ data: profile }, ownerSetting] = await Promise.all([
+    client.from('profiles').select('is_owner').eq('user_id', userId).maybeSingle(),
+    getSetting(client, 'owner_user_ids'),
+  ]);
+  if (profile?.is_owner === true) return true;
+  if (Array.isArray(ownerSetting) && ownerSetting.includes(userId)) return true;
+  if (Array.isArray(ownerSetting?.ids) && ownerSetting.ids.includes(userId)) return true;
+  return false;
+};
+
+const resolveEntityByTargetPath = ({ targetPath, characters, worlds }) => {
+  if (!targetPath) return null;
+  if (targetPath.startsWith('/worlds/')) {
+    return worlds.find((item) => targetPath.endsWith(`/${item.slug}`)) || null;
+  }
+  if (targetPath.startsWith('/characters/')) {
+    return characters.find((item) => targetPath.endsWith(`/${item.slug}`)) || null;
+  }
+  return null;
+};
+
+export const getHomePayload = async ({ tab = 'characters', search = '', filter = '' } = {}) => {
   const client = await publicClient();
   if (!client) return null;
   const [characters, worlds, heroSetting] = await Promise.all([
-    listCharacters({ search }),
-    listWorlds({ search }),
+    listCharacters({ search, filter }),
+    listWorlds({ search, filter }),
     getSetting(client, 'home.hero'),
   ]);
-  const heroPath = typeof heroSetting?.targetPath === 'string'
-    ? heroSetting.targetPath
-    : tab === 'worlds'
-      ? `/worlds/${worlds[0]?.slug || ''}`
-      : `/characters/${characters[0]?.slug || ''}`;
-  const hero = heroPath.startsWith('/worlds/') ? worlds[0] : characters[0];
+  const heroMode = heroSetting?.mode === 'manual' ? 'manual' : 'auto';
+  const autoHero = [...characters, ...worlds].sort((a, b) => b.chatStartCount - a.chatStartCount || b.favoriteCount - a.favoriteCount || Date.parse(b.updatedAt) - Date.parse(a.updatedAt))[0];
+  const manualHero = resolveEntityByTargetPath({ targetPath: String(heroSetting?.targetPath || ''), characters, worlds });
+  const hero = heroMode === 'manual' && manualHero ? manualHero : autoHero;
   return {
     home: {
       defaultTab: 'characters',
-      filterChips: ['신작', '태그'],
+      filterChips: ['신작', '인기'],
       hero: {
         title: hero?.name || '캐릭터',
         subtitle: hero?.headline || hero?.summary || '',
         coverImageUrl: hero?.coverImageUrl || '/world_tokyo.svg',
-        targetPath: heroPath,
+        targetPath: hero?.entityType === 'world' ? `/worlds/${hero.slug}` : `/characters/${hero?.slug || characters[0]?.slug || ''}`,
       },
       characterFeed: { items: characters },
       worldFeed: { items: worlds },
@@ -671,11 +713,24 @@ export const appendRoomMessages = async ({ event, roomId, userMessage, assistant
 export const getOpsDashboard = async ({ event, userId }) => {
   const client = await userClient(event);
   if (!client) return null;
+  const ownerMode = await isOwnerUser({ event, userId });
+  const characterVisibleQuery = ownerMode
+    ? client.from('characters').select('*').eq('display_status', 'visible')
+    : client.from('characters').select('*').eq('owner_user_id', userId).eq('display_status', 'visible');
+  const characterHiddenQuery = ownerMode
+    ? client.from('characters').select('*').eq('display_status', 'hidden')
+    : client.from('characters').select('*').eq('owner_user_id', userId).eq('display_status', 'hidden');
+  const worldVisibleQuery = ownerMode
+    ? client.from('worlds').select('*').eq('display_status', 'visible')
+    : client.from('worlds').select('*').eq('owner_user_id', userId).eq('display_status', 'visible');
+  const worldHiddenQuery = ownerMode
+    ? client.from('worlds').select('*').eq('display_status', 'hidden')
+    : client.from('worlds').select('*').eq('owner_user_id', userId).eq('display_status', 'hidden');
   const [charactersVisible, charactersHidden, worldsVisible, worldsHidden, heroSetting] = await Promise.all([
-    client.from('characters').select('*').eq('owner_user_id', userId).eq('display_status', 'visible'),
-    client.from('characters').select('*').eq('owner_user_id', userId).eq('display_status', 'hidden'),
-    client.from('worlds').select('*').eq('owner_user_id', userId).eq('display_status', 'visible'),
-    client.from('worlds').select('*').eq('owner_user_id', userId).eq('display_status', 'hidden'),
+    characterVisibleQuery,
+    characterHiddenQuery,
+    worldVisibleQuery,
+    worldHiddenQuery,
     getSetting(client, 'home.hero'),
   ]);
   return {
@@ -686,6 +741,7 @@ export const getOpsDashboard = async ({ event, userId }) => {
       hiddenWorlds: (worldsHidden.data || []).map(summarizeWorld),
     },
     home: {
+      heroMode: heroSetting?.mode === 'manual' ? 'manual' : 'auto',
       heroTargetPath: typeof heroSetting?.targetPath === 'string' ? heroSetting.targetPath : '',
     },
   };
@@ -700,12 +756,60 @@ export const setContentVisibility = async ({ event, entityType, id, status }) =>
   return true;
 };
 
+export const deleteContent = async ({ event, entityType, id }) => {
+  const client = await userClient(event);
+  if (!client) return false;
+  const table = entityType === 'character' ? 'characters' : 'worlds';
+  const assetTable = entityType === 'character' ? 'character_assets' : 'world_assets';
+  const fkColumn = entityType === 'character' ? 'character_id' : 'world_id';
+  const { data: row, error: rowError } = await client.from(table).select('id').or(`id.eq.${id},slug.eq.${id}`).maybeSingle();
+  if (rowError) throw rowError;
+  if (!row?.id) return false;
+  const { data: assets, error: assetError } = await client.from(assetTable).select('url').eq(fkColumn, row.id);
+  if (assetError) throw assetError;
+  await removeStorageObjectsByUrls({ client, urls: (assets || []).map((asset) => asset.url) });
+  const { error } = await client.from(table).delete().eq('id', row.id);
+  if (error) throw error;
+  return true;
+};
+
 export const setHomeHeroTarget = async ({ event, targetPath }) => {
   const client = await userClient(event);
   if (!client) return null;
-  const { error } = await client.from('app_settings').upsert({ key: 'home.hero', value_json: { targetPath }, updated_at: nowIso() });
+  const current = await getSetting(client, 'home.hero');
+  const { error } = await client.from('app_settings').upsert({
+    key: 'home.hero',
+    value_json: {
+      ...(current && typeof current === 'object' ? current : {}),
+      targetPath,
+    },
+    updated_at: nowIso(),
+  });
   if (error) throw error;
-  return { targetPath };
+  return {
+    heroMode: current?.mode === 'manual' ? 'manual' : 'auto',
+    heroTargetPath: targetPath,
+  };
+};
+
+export const setHomeHeroMode = async ({ event, mode }) => {
+  const client = await userClient(event);
+  if (!client) return null;
+  const current = await getSetting(client, 'home.hero');
+  const heroMode = mode === 'manual' ? 'manual' : 'auto';
+  const { error } = await client.from('app_settings').upsert({
+    key: 'home.hero',
+    value_json: {
+      ...(current && typeof current === 'object' ? current : {}),
+      mode: heroMode,
+    },
+    updated_at: nowIso(),
+  });
+  if (error) throw error;
+  return {
+    heroMode,
+    heroTargetPath: typeof current?.targetPath === 'string' ? current.targetPath : '',
+  };
 };
 
 export const prepareAssetUploads = async ({ event, userId, entityType, variants }) => {

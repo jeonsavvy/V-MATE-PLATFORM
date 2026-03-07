@@ -66,7 +66,7 @@ export const parseAllowedOrigins = () => {
 
 export const normalizeOrigin = (origin) => String(origin || '').trim().replace(/\/+$/, '');
 
-export const isOriginAllowed = (origin) => {
+export const isOriginAllowed = (origin, requestOrigin = '') => {
     if (shouldAllowAllOrigins()) {
         return true;
     }
@@ -76,6 +76,10 @@ export const isOriginAllowed = (origin) => {
     }
 
     const normalized = normalizeOrigin(origin);
+    const normalizedRequestOrigin = normalizeOrigin(requestOrigin);
+    if (normalizedRequestOrigin && normalized === normalizedRequestOrigin) {
+        return true;
+    }
     const allowlist = parseAllowedOrigins();
     return allowlist.has(normalized);
 };

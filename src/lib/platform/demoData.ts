@@ -22,8 +22,8 @@ const characters: CharacterDetail[] = [
     entityType: 'character',
     slug: 'mika',
     name: '미소노 미카',
-    headline: '장난스럽고 다정한 결의 인기 캐릭터',
-    summary: '친밀한 반말과 밝은 장난기가 중심인 인기 RP 캐릭터.',
+    headline: '장난스럽고 빠르게 가까워지는 학생',
+    summary: '친밀한 반말과 밝은 장난기가 중심인 캐릭터.',
     coverImageUrl: '/mika_normal.webp',
     avatarImageUrl: '/mika_happy.webp',
     tags: ['학원', '친밀감', '반말', '2차창작'],
@@ -40,6 +40,12 @@ const characters: CharacterDetail[] = [
       { title: '관계감', body: '처음부터 거리를 과도하게 두기보다는 빠르게 친밀감을 만든다.' },
     ],
     gallery: ['/mika_normal.webp', '/mika_happy.webp', '/mika_angry.webp'],
+    imageSlots: [
+      { id: 'mika-main', slot: 'main', usage: '대표 이미지', trigger: '기본 대표 비주얼', priority: 100, detailUrl: '/mika_normal.webp', cardUrl: '/mika_normal.webp', thumbUrl: '/mika_normal.webp' },
+      { id: 'mika-normal', slot: 'normal', usage: '기본 표정', trigger: '특수 감정이 없을 때', priority: 90, detailUrl: '/mika_normal.webp', cardUrl: '/mika_normal.webp', thumbUrl: '/mika_normal.webp' },
+      { id: 'mika-happy', slot: 'happy', usage: '밝게 웃는 장면', trigger: '기분이 좋거나 장난스럽게 웃을 때', priority: 80, detailUrl: '/mika_happy.webp', cardUrl: '/mika_happy.webp', thumbUrl: '/mika_happy.webp' },
+      { id: 'mika-angry', slot: 'angry', usage: '감정이 올라온 장면', trigger: '질투, 당황, 갈등으로 감정이 높아질 때', priority: 80, detailUrl: '/mika_angry.webp', cardUrl: '/mika_angry.webp', thumbUrl: '/mika_angry.webp' },
+    ],
     worlds: [],
   },
   {
@@ -47,8 +53,8 @@ const characters: CharacterDetail[] = [
     entityType: 'character',
     slug: 'alice',
     name: '앨리스',
-    headline: '격식체와 책임감을 가진 기사형 캐릭터',
-    summary: '품위 있는 말투와 단단한 신뢰감을 가진 기사형 RP 캐릭터.',
+    headline: '격식과 신뢰를 지키는 기사',
+    summary: '품위 있는 말투와 단단한 신뢰감을 가진 기사형 캐릭터.',
     coverImageUrl: '/alice_normal.webp',
     avatarImageUrl: '/alice_confused.webp',
     tags: ['판타지', '기사', '격식체', '2차창작'],
@@ -65,6 +71,12 @@ const characters: CharacterDetail[] = [
       { title: '관계감', body: '협력자/동료로 신뢰를 쌓는 흐름이 자연스럽다.' },
     ],
     gallery: ['/alice_normal.webp', '/alice_confused.webp', '/alice_angry.webp'],
+    imageSlots: [
+      { id: 'alice-main', slot: 'main', usage: '대표 이미지', trigger: '기본 대표 비주얼', priority: 100, detailUrl: '/alice_normal.webp', cardUrl: '/alice_normal.webp', thumbUrl: '/alice_normal.webp' },
+      { id: 'alice-normal', slot: 'normal', usage: '기본 표정', trigger: '평온한 대화 장면', priority: 90, detailUrl: '/alice_normal.webp', cardUrl: '/alice_normal.webp', thumbUrl: '/alice_normal.webp' },
+      { id: 'alice-confused', slot: 'confused', usage: '당황하거나 고민하는 장면', trigger: '판단이 흔들리거나 예상을 벗어날 때', priority: 80, detailUrl: '/alice_confused.webp', cardUrl: '/alice_confused.webp', thumbUrl: '/alice_confused.webp' },
+      { id: 'alice-angry', slot: 'angry', usage: '분노하거나 단호한 장면', trigger: '규칙 위반, 위협, 갈등 장면', priority: 80, detailUrl: '/alice_angry.webp', cardUrl: '/alice_angry.webp', thumbUrl: '/alice_angry.webp' },
+    ],
     worlds: [],
   },
   {
@@ -72,8 +84,8 @@ const characters: CharacterDetail[] = [
     entityType: 'character',
     slug: 'kael',
     name: '카엘',
-    headline: '무심한 척 챙겨주는 현실형 캐릭터',
-    summary: '짧은 말투와 현실적인 배려가 중심인 현대/게임 감성 캐릭터.',
+    headline: '무심한 척 챙겨주는 현실형 인물',
+    summary: '짧은 말투와 현실적인 배려가 중심인 현대 감성 캐릭터.',
     coverImageUrl: '/kael_normal.webp',
     avatarImageUrl: '/kael_happy.webp',
     tags: ['현대', '게임', '쿨데레', '오리지널'],
@@ -90,6 +102,12 @@ const characters: CharacterDetail[] = [
       { title: '관계감', body: '친구/동료 톤에서 자연스럽게 텐션을 쌓는다.' },
     ],
     gallery: ['/kael_normal.webp', '/kael_happy.webp', '/kael_angry.webp'],
+    imageSlots: [
+      { id: 'kael-main', slot: 'main', usage: '대표 이미지', trigger: '기본 대표 비주얼', priority: 100, detailUrl: '/kael_normal.webp', cardUrl: '/kael_normal.webp', thumbUrl: '/kael_normal.webp' },
+      { id: 'kael-normal', slot: 'normal', usage: '기본 표정', trigger: '평소 대화 장면', priority: 90, detailUrl: '/kael_normal.webp', cardUrl: '/kael_normal.webp', thumbUrl: '/kael_normal.webp' },
+      { id: 'kael-happy', slot: 'happy', usage: '살짝 웃는 장면', trigger: '호감과 편안함이 드러날 때', priority: 80, detailUrl: '/kael_happy.webp', cardUrl: '/kael_happy.webp', thumbUrl: '/kael_happy.webp' },
+      { id: 'kael-angry', slot: 'angry', usage: '감정이 올라온 장면', trigger: '상대를 지키거나 긴장감이 높아질 때', priority: 80, detailUrl: '/kael_angry.webp', cardUrl: '/kael_angry.webp', thumbUrl: '/kael_angry.webp' },
+    ],
     worlds: [],
   },
 ]
@@ -218,6 +236,18 @@ worlds[2].characters = [characters[1], characters[0]].map(({ worlds: _worlds, ..
 const summarizeCharacter = ({ worlds: _worlds, profileSections: _profileSections, gallery: _gallery, ...item }: CharacterDetail): CharacterSummary => item
 const summarizeWorld = ({ worldSections: _worldSections, gallery: _gallery, characters: _characters, ...item }: WorldDetail): WorldSummary => item
 
+const sortByFilter = <T extends { updatedAt: string; chatStartCount: number; favoriteCount: number }>(items: T[], filter: 'new' | 'popular' | '' = '') =>
+  [...items].sort((a, b) => {
+    if (filter === 'new') {
+      return Date.parse(b.updatedAt) - Date.parse(a.updatedAt)
+    }
+    return (
+      b.chatStartCount - a.chatStartCount
+      || b.favoriteCount - a.favoriteCount
+      || Date.parse(b.updatedAt) - Date.parse(a.updatedAt)
+    )
+  })
+
 export const demoBridgeProfile = ({ character, world }: { character: CharacterSummary; world: WorldSummary | null }): BridgeProfile => {
   if (!world) {
     return {
@@ -247,29 +277,36 @@ export const demoBridgeProfile = ({ character, world }: { character: CharacterSu
 }
 
 export const demoPlatform = {
-  home(tab: 'characters' | 'worlds' = 'characters'): HomeFeedPayload {
+  home(tab: 'characters' | 'worlds' = 'characters', filter: 'new' | 'popular' | '' = ''): HomeFeedPayload {
+    const characterItems = sortByFilter(characters.map(summarizeCharacter), filter)
+    const worldItems = sortByFilter(worlds.map(summarizeWorld), filter)
+    const hero = [...characterItems, ...worldItems].sort((a, b) => (
+      b.chatStartCount - a.chatStartCount
+      || b.favoriteCount - a.favoriteCount
+      || Date.parse(b.updatedAt) - Date.parse(a.updatedAt)
+    ))[0]
     return {
       home: {
         defaultTab: 'characters',
-        filterChips: ['신작', '태그'],
+        filterChips: ['신작', '인기'],
         hero: {
-          title: tab === 'characters' ? characters[0].name : worlds[0].name,
-          subtitle: tab === 'characters' ? characters[0].headline || characters[0].summary : worlds[0].headline || worlds[0].summary,
-          coverImageUrl: tab === 'characters' ? characters[0].coverImageUrl : worlds[0].coverImageUrl,
-          targetPath: tab === 'characters' ? `/characters/${characters[0].slug}` : `/worlds/${worlds[0].slug}`,
+          title: hero?.name || 'V-MATE',
+          subtitle: hero?.headline || hero?.summary || '',
+          coverImageUrl: hero?.coverImageUrl || (tab === 'characters' ? characters[0].coverImageUrl : worlds[0].coverImageUrl),
+          targetPath: hero?.entityType === 'world' ? `/worlds/${hero.slug}` : `/characters/${hero?.slug || characters[0].slug}`,
         },
-        characterFeed: { items: characters.map(summarizeCharacter) },
-        worldFeed: { items: worlds.map(summarizeWorld) },
+        characterFeed: { items: characterItems },
+        worldFeed: { items: worldItems },
       },
     }
   },
-  characters(search = ''): CharacterSummary[] {
+  characters(search = '', filter: 'new' | 'popular' | '' = ''): CharacterSummary[] {
     const q = search.trim().toLowerCase()
-    return characters.map(summarizeCharacter).filter((item) => !q || JSON.stringify(item).toLowerCase().includes(q))
+    return sortByFilter(characters.map(summarizeCharacter), filter).filter((item) => !q || JSON.stringify(item).toLowerCase().includes(q))
   },
-  worlds(search = ''): WorldSummary[] {
+  worlds(search = '', filter: 'new' | 'popular' | '' = ''): WorldSummary[] {
     const q = search.trim().toLowerCase()
-    return worlds.map(summarizeWorld).filter((item) => !q || JSON.stringify(item).toLowerCase().includes(q))
+    return sortByFilter(worlds.map(summarizeWorld), filter).filter((item) => !q || JSON.stringify(item).toLowerCase().includes(q))
   },
   character(slug: string) {
     return characters.find((item) => item.slug === slug) ?? null
@@ -303,6 +340,7 @@ export const demoPlatform = {
         hiddenWorlds: [],
       },
       home: {
+        heroMode: 'auto',
         heroTargetPath: `/characters/${characters[0].slug}`,
       },
     }
