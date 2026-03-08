@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { extractBearerToken } from '../modules/auth-guard.js';
+import { logServerWarn } from '../modules/server-logger.js';
 import { buildRoomPromptSnapshot, createInitialRoomState, generateBridgeProfile, updateRoomStateFromMessages } from './prompt-builder.js';
 
 const STORAGE_BUCKET = process.env.PUBLIC_ASSETS_BUCKET || 'vmate-assets';
@@ -192,6 +193,40 @@ const resolveEntityByTargetPath = ({ targetPath, characters, worlds }) => {
     return characters.find((item) => targetPath.endsWith(`/${item.slug}`)) || null;
   }
   return null;
+};
+
+export const incrementChatStartCountsBestEffort = async ({ client, character, world }) => {
+  const operations = [
+    {
+      label: 'character',
+      entityId: character?.id || '',
+      run: () => client.from('characters').update({ chat_start_count: Number(character?.chat_start_count || 0) + 1 }).eq('id', character.id),
+    },
+    ...(world ? [{
+      label: 'world',
+      entityId: world.id,
+      run: () => client.from('worlds').update({ chat_start_count: Number(world.chat_start_count || 0) + 1 }).eq('id', world.id),
+    }] : []),
+  ];
+
+  for (const operation of operations) {
+    try {
+      const result = await operation.run();
+      if (result?.error) {
+        logServerWarn('[V-MATE] chat_start_count update skipped', {
+          label: operation.label,
+          entityId: operation.entityId,
+          message: result.error?.message || String(result.error),
+        });
+      }
+    } catch (error) {
+      logServerWarn('[V-MATE] chat_start_count update threw and was ignored', {
+        label: operation.label,
+        entityId: operation.entityId,
+        message: error?.message || String(error),
+      });
+    }
+  }
 };
 
 export const getHomePayload = async ({ tab = 'characters', search = '', filter = '' } = {}) => {
@@ -643,10 +678,7 @@ export const createRoom = async ({ event, userId, characterSlug, worldSlug = nul
   const { error: messageError } = await client.from('room_messages').insert({ room_id: roomRow.id, ...greeting });
   if (messageError) throw messageError;
 
-  await client.from('characters').update({ chat_start_count: Number(character.chat_start_count || 0) + 1 }).eq('id', character.id);
-  if (world) {
-    await client.from('worlds').update({ chat_start_count: Number(world.chat_start_count || 0) + 1 }).eq('id', world.id);
-  }
+  await incrementChatStartCountsBestEffort({ client, character, world });
 
   return hydrateRoom({ client, publicClientInstance: publicReadClient, row: roomRow });
 };
