@@ -185,13 +185,24 @@ export function FilterChip({ active = false, children, onClick }: { active?: boo
   )
 }
 
+const resolveEntityArtwork = (item: EntitySummary) => {
+  if (item.coverImageUrl) {
+    return item.coverImageUrl
+  }
+
+  const imageSlots = 'imageSlots' in item && Array.isArray(item.imageSlots) ? item.imageSlots : []
+  const slot = imageSlots.find((entry) => entry.detailUrl || entry.cardUrl || entry.thumbUrl)
+  return slot?.detailUrl || slot?.cardUrl || slot?.thumbUrl || ''
+}
+
 export function EntityCard({ item, meta, onClick, cta = '상세 보기' }: { item: EntitySummary; meta?: string; onClick?: () => void; cta?: string }) {
   void meta
   const mediaAspectClassName = item.entityType === 'world' ? 'aspect-[16/9]' : 'aspect-[3/4]'
+  const artwork = resolveEntityArtwork(item)
   return (
     <button type="button" onClick={onClick} className="group overflow-hidden rounded-[1.75rem] border border-white/8 bg-[#17191d] text-left transition hover:-translate-y-1 hover:border-white/16">
       <div className="relative">
-        <ArtworkFrame src={item.coverImageUrl} alt={item.name} aspectClassName={mediaAspectClassName} imageClassName="transition duration-500 group-hover:scale-[1.01]" />
+        <ArtworkFrame src={artwork} alt={item.name} aspectClassName={mediaAspectClassName} imageClassName="transition duration-500 group-hover:scale-[1.01]" />
         <div className="absolute left-4 top-4 flex flex-wrap gap-2">
           <span className="rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-semibold tracking-[0.14em] text-white">{item.sourceType === 'original' ? '오리지널' : '2차창작'}</span>
           {item.displayStatus === 'hidden' ? <span className="rounded-full bg-[#d92c63] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">숨김</span> : null}
