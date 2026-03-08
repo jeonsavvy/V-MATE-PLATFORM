@@ -143,10 +143,12 @@ export function FilterChip({ active = false, children, onClick }: { active?: boo
 }
 
 export function EntityCard({ item, meta, onClick, cta = '상세 보기' }: { item: EntitySummary; meta?: string; onClick?: () => void; cta?: string }) {
+  void meta
+  const mediaAspectClassName = item.entityType === 'world' ? 'aspect-[16/9]' : 'aspect-[3/4]'
   return (
     <button type="button" onClick={onClick} className="group overflow-hidden rounded-[1.75rem] border border-white/8 bg-[#17191d] text-left transition hover:-translate-y-1 hover:border-white/16">
-      <div className="relative aspect-[3/4] overflow-hidden">
-        <img src={item.coverImageUrl} alt={item.name} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]" loading="lazy" decoding="async" />
+      <div className={`relative overflow-hidden bg-[#111317] ${mediaAspectClassName}`}>
+        <img src={item.coverImageUrl} alt={item.name} className="h-full w-full object-contain transition duration-500 group-hover:scale-[1.01]" loading="lazy" decoding="async" />
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0)_18%,rgba(0,0,0,0.82)_100%)]" />
         <div className="absolute left-4 top-4 flex flex-wrap gap-2">
           <span className="rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-semibold tracking-[0.14em] text-white">{item.sourceType === 'original' ? '오리지널' : '2차창작'}</span>
@@ -154,7 +156,6 @@ export function EntityCard({ item, meta, onClick, cta = '상세 보기' }: { ite
         </div>
         <div className="absolute inset-x-0 bottom-0 p-4 text-white">
           <p className="text-[1.45rem] font-semibold tracking-[-0.03em]">{item.name}</p>
-          {meta && <p className="mt-1 text-xs text-white/68">{meta}</p>}
         </div>
       </div>
       <div className="space-y-4 p-4">
@@ -162,7 +163,6 @@ export function EntityCard({ item, meta, onClick, cta = '상세 보기' }: { ite
         <div className="flex flex-wrap gap-2">
           {item.tags.slice(0, 4).map((tag) => <span key={tag} className="rounded-full bg-white/7 px-2.5 py-1 text-[11px] text-white/62">{tag}</span>)}
         </div>
-        <div className="text-xs text-white/44">{item.creator.name}</div>
         <p className="text-sm font-semibold text-white">{cta}</p>
       </div>
     </button>

@@ -331,6 +331,19 @@ alter table public.rooms add column if not exists resolved_prompt_snapshot_json 
 alter table public.rooms add column if not exists last_message_at timestamp with time zone default timezone('utc'::text, now()) not null;
 alter table public.rooms add column if not exists created_at timestamp with time zone default timezone('utc'::text, now()) not null;
 alter table public.rooms add column if not exists updated_at timestamp with time zone default timezone('utc'::text, now()) not null;
+alter table public.rooms alter column world_id drop not null;
+
+do $$ begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'rooms'
+      and column_name = 'preset_id'
+  ) then
+    execute 'alter table public.rooms alter column preset_id drop not null';
+  end if;
+end $$;
 
 create index if not exists idx_rooms_user_updated on public.rooms (user_id, updated_at desc);
 

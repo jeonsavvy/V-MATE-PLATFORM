@@ -223,12 +223,19 @@ test('home and detail views avoid fake metrics and duplicated management section
   assert.equal(homeSource.includes('내가 만든 월드'), false);
   assert.equal(homeSource.includes('chatStartCount.toLocaleString'), false);
   assert.equal(homeSource.includes('favoriteCount.toLocaleString'), false);
+  assert.equal(homeSource.includes('대표 배너'), false);
+  assert.equal(homeSource.includes('상세 보기'), false);
 
   const pagesPath = path.join(srcRoot, 'components/platform/Pages.tsx');
   const pagesSource = await readFile(pagesPath, 'utf8');
   assert.equal(pagesSource.includes('월드 고르고 시작'), false);
   assert.equal(pagesSource.includes('chatStartCount.toLocaleString'), false);
   assert.equal(pagesSource.includes('favoriteCount.toLocaleString'), false);
+  assert.equal(pagesSource.includes('현재 상황'), false);
+  assert.equal(pagesSource.includes('월드 메모'), false);
+  assert.equal(pagesSource.includes('소지품'), false);
+  assert.equal(pagesSource.includes('의상/자세'), false);
+  assert.equal(pagesSource.includes('미래 일정/약속'), false);
 });
 
 test('platform shell keeps ops inside create section instead of top-level nav', async () => {
@@ -265,6 +272,20 @@ test('library page exposes owned character/world shelves below recent views', as
 
   assert.ok(source.includes('내가 만든 캐릭터'));
   assert.ok(source.includes('내가 만든 월드'));
+});
+
+test('public-facing ui removes creator-name display across home, cards, and detail pages', async () => {
+  const homePath = path.join(srcRoot, 'components/Home.tsx');
+  const homeSource = await readFile(homePath, 'utf8');
+  assert.equal(homeSource.includes('meta={item.creator.name}'), false);
+
+  const scaffoldPath = path.join(srcRoot, 'components/platform/PlatformScaffold.tsx');
+  const scaffoldSource = await readFile(scaffoldPath, 'utf8');
+  assert.equal(scaffoldSource.includes('item.creator.name'), false);
+
+  const pagesPath = path.join(srcRoot, 'components/platform/Pages.tsx');
+  const pagesSource = await readFile(pagesPath, 'utf8');
+  assert.equal(pagesSource.includes('item.creator.name'), false);
 });
 
 test('creator flows collapse description fields into practical prompt editors and remove public visibility control', async () => {

@@ -166,7 +166,7 @@ export function CharacterDetailPage({ chrome, slug }: { chrome: PlatformPageChro
       <AliasDialog open={aliasOpen} initialValue={String(chrome.user?.user_metadata?.name || '')} onConfirm={(value) => { setAliasOpen(false); startRoom(pendingWorldSlug ?? null, value) }} />
       <div className="grid gap-6 xl:grid-cols-[0.84fr_1.16fr]">
         <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#121418] xl:max-h-[720px]">
-          <img src={item.coverImageUrl} alt={item.name} className="h-full w-full object-cover object-top" loading="eager" decoding="async" />
+          <img src={item.coverImageUrl} alt={item.name} className="h-full w-full object-contain p-4" loading="eager" decoding="async" />
         </div>
         <div className="space-y-6 rounded-[2rem] border border-white/10 bg-[#20242b] p-6">
           <div>
@@ -178,8 +178,6 @@ export function CharacterDetailPage({ chrome, slug }: { chrome: PlatformPageChro
           <div className="flex flex-wrap gap-2">
             {item.tags.map((tag) => <span key={tag} className="rounded-full bg-white/8 px-3 py-1 text-xs text-white/72">{tag}</span>)}
           </div>
-
-          <div className="text-sm text-white/46">{item.creator.name}</div>
 
           {item.imageSlots.length > 0 ? (
             <div className="flex flex-wrap gap-3">
@@ -276,7 +274,7 @@ export function WorldDetailPage({ chrome, slug }: { chrome: PlatformPageChromePr
       />
       <div className="space-y-6">
         <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#121418]">
-          <img src={item.coverImageUrl} alt={item.name} className="h-[360px] w-full object-cover" loading="eager" decoding="async" />
+          <img src={item.coverImageUrl} alt={item.name} className="h-[360px] w-full object-contain p-4" loading="eager" decoding="async" />
         </div>
         <div className="grid gap-6 xl:grid-cols-[1.02fr_0.98fr]">
           <div className="space-y-6 rounded-[2rem] border border-white/10 bg-[#20242b] p-6">
@@ -302,15 +300,6 @@ export function WorldDetailPage({ chrome, slug }: { chrome: PlatformPageChromePr
     </PageFrame>
   )
 }
-
-const StateCard = ({ title, items }: { title: string; items: string[] }) => (
-  <div className="rounded-[1.3rem] border border-white/10 bg-white/[0.04] p-4">
-    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/42">{title}</p>
-    <ul className="mt-3 space-y-2 text-sm leading-6 text-white/72">
-      {items.length === 0 ? <li>없음</li> : items.map((item) => <li key={item}>• {item}</li>)}
-    </ul>
-  </div>
-)
 
 const NarrativeMessage = ({ message }: { message: RoomSummary['messages'][number] }) => {
   if (message.role === 'user') {
@@ -403,11 +392,11 @@ export function RoomPage({ chrome, roomId }: { chrome: PlatformPageChromeProps; 
           <div className="space-y-4">
             {room.world ? (
               <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#121418]">
-                <img src={activeWorldImage} alt={room.world.name} className="h-[240px] w-full object-cover" loading="eager" decoding="async" />
+                <img src={activeWorldImage} alt={room.world.name} className="h-[240px] w-full object-contain p-4" loading="eager" decoding="async" />
               </div>
             ) : null}
             <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#121418]">
-              <img src={activeCharacterImage} alt={room.character.name} className="h-full w-full object-cover object-top" loading="eager" decoding="async" />
+              <img src={activeCharacterImage} alt={room.character.name} className="h-full w-full object-contain p-4" loading="eager" decoding="async" />
             </div>
           </div>
           <div className="space-y-6 rounded-[2rem] border border-white/10 bg-[#20242b] p-6">
@@ -425,14 +414,6 @@ export function RoomPage({ chrome, roomId }: { chrome: PlatformPageChromeProps; 
             <div className="space-y-4">
               {room.messages.map((message) => <NarrativeMessage key={message.id} message={message} />)}
               {isLoading ? <div className="text-sm text-white/46"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />응답을 생성하는 중...</div> : null}
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <StateCard title="현재 상황" items={[room.state.currentSituation, room.state.location, room.state.relationshipState]} />
-              <StateCard title="월드 메모" items={room.state.worldNotes} />
-              <StateCard title="소지품" items={room.state.inventory} />
-              <StateCard title="의상/자세" items={[...room.state.appearance, ...room.state.pose]} />
-              <StateCard title="미래 일정/약속" items={room.state.futurePromises} />
             </div>
 
             <div className="space-y-3 border-t border-white/8 pt-4">
