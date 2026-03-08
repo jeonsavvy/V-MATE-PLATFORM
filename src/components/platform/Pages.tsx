@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Eye, EyeOff, ImagePlus, LayoutTemplate, Loader2, MessageCircle, PlusCircle, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { CharacterDetail, CharacterSummary, CharacterWorldLinkSummary, LibraryPayload, OwnerOpsDashboard, RoomSummary, WorldDetail } from '@/lib/platform/types'
+import type { CharacterDetail, CharacterSummary, CharacterWorldLinkSummary, LibraryPayload, OwnerOpsDashboard, RoomSummary, WorldDetail, WorldSummary } from '@/lib/platform/types'
 import { platformApi } from '@/lib/platform/apiClient'
 import { CHARACTER_VARIANTS, createImageVariants, type ResizedImageAsset, WORLD_VARIANTS } from '@/lib/platform/imagePipeline'
 import { Button } from '@/components/ui/button'
@@ -34,24 +34,30 @@ const ProtectedGate = ({ chrome, title, description }: { chrome: PlatformPageChr
 const CharacterWorldPicker = ({
   open,
   onOpenChange,
-  links,
+  title,
+  description,
+  items,
+  emptyOption,
   onSelect,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  links: CharacterWorldLinkSummary[]
-  onSelect: (link: CharacterWorldLinkSummary | null) => void
+  title: string
+  description: string
+  items: Array<{ id: string; title: string; body: string; value: string }>
+  emptyOption?: { title: string; body: string }
+  onSelect: (value: string | null) => void
 }) => (
   <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent className="max-w-3xl rounded-[2rem] bg-[#20242b] text-white">
       <DialogHeader>
-        <DialogTitle className="text-white">월드를 골라 새 대화를 시작하세요</DialogTitle>
-        <DialogDescription className="text-white/56">월드를 고르면 캐릭터 결은 유지한 채 그 월드 규칙 안으로 자연스럽게 연결됩니다.</DialogDescription>
+        <DialogTitle className="text-white">{title}</DialogTitle>
+        <DialogDescription className="text-white/56">{description}</DialogDescription>
       </DialogHeader>
       <div className="grid gap-4 md:grid-cols-2">
-        <LinkCard title="캐릭터 단독으로 시작" body="월드 없이 캐릭터 자체의 결로 바로 대화를 시작합니다." onClick={() => onSelect(null)} />
-        {links.map((link) => (
-          <LinkCard key={link.id} title={link.world.name} body={link.linkReason} onClick={() => onSelect(link)} />
+        {emptyOption ? <LinkCard title={emptyOption.title} body={emptyOption.body} onClick={() => onSelect(null)} /> : null}
+        {items.map((item) => (
+          <LinkCard key={item.id} title={item.title} body={item.body} onClick={() => onSelect(item.value)} />
         ))}
       </div>
     </DialogContent>
@@ -93,42 +99,54 @@ const AliasDialog = ({
 export function CharacterDetailPage({ chrome, slug }: { chrome: PlatformPageChromeProps; slug: string }) {
   const [item, setItem] = useState<CharacterDetail | null>(null)
   const [links, setLinks] = useState<CharacterWorldLinkSummary[]>([])
+  const [availableWorlds, setAvailableWorlds] = useState<WorldSummary[]>([])
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [pendingLink, setPendingLink] = useState<CharacterWorldLinkSummary | null | undefined>(undefined)
+  const [pendingWorldSlug, setPendingWorldSlug] = useState<string | null | undefined>(undefined)
   const [aliasOpen, setAliasOpen] = useState(false)
 
   useEffect(() => {
     let mounted = true
-    void Promise.all([platformApi.fetchCharacter(slug), platformApi.fetchCharacterWorldLinks(slug)])
-      .then(([character, worldLinks]) => {
+    void Promise.all([platformApi.fetchCharacter(slug), platformApi.fetchCharacterWorldLinks(slug), platformApi.fetchWorlds('', 'popular')])
+      .then(([character, worldLinks, worlds]) => {
         if (!mounted) return
         setItem(character.item)
         setLinks(worldLinks.items)
+        setAvailableWorlds(worlds.items)
       })
       .catch((error) => toast.error(error instanceof Error ? error.message : '캐릭터를 불러오지 못했습니다.'))
     return () => { mounted = false }
   }, [slug])
 
-  const startRoom = (selectedLink: CharacterWorldLinkSummary | null, aliasOverride?: string) => {
+  const startRoom = (worldSlug?: string | null, aliasOverride?: string) => {
     if (!item) return
-    void platformApi.createRoom({ characterSlug: item.slug, worldSlug: selectedLink?.worldSlug || null, userAlias: aliasOverride })
+    void platformApi.createRoom({ characterSlug: item.slug, worldSlug: worldSlug || null, userAlias: aliasOverride })
       .then(({ room }) => chrome.onNavigate(`/rooms/${room.id}`))
       .catch((error) => toast.error(error instanceof Error ? error.message : '새 대화 시작에 실패했습니다.'))
   }
 
-  const handleStart = (selectedLink: CharacterWorldLinkSummary | null) => {
+  const handleStart = (selectedWorldSlug: string | null) => {
     if (!chrome.user) {
       chrome.onAuthRequest()
       return
     }
     const displayName = String(chrome.user.user_metadata?.name || '').trim()
     if (!displayName) {
-      setPendingLink(selectedLink)
+      setPendingWorldSlug(selectedWorldSlug)
       setAliasOpen(true)
       return
     }
-    startRoom(selectedLink, displayName)
+    startRoom(selectedWorldSlug, displayName)
   }
+
+  const worldPickerItems = availableWorlds.map((world) => {
+    const linked = links.find((link) => link.worldSlug === world.slug)
+    return {
+      id: world.id,
+      title: world.name,
+      body: linked?.linkReason || world.headline || world.summary,
+      value: world.slug,
+    }
+  })
 
   if (!item) {
     return <PageFrame chrome={chrome}><EmptyState title="캐릭터를 불러오는 중" description="잠시만 기다려주세요." /></PageFrame>
@@ -136,8 +154,16 @@ export function CharacterDetailPage({ chrome, slug }: { chrome: PlatformPageChro
 
   return (
     <PageFrame chrome={chrome}>
-      <CharacterWorldPicker open={pickerOpen} onOpenChange={setPickerOpen} links={links} onSelect={(link) => { setPickerOpen(false); handleStart(link) }} />
-      <AliasDialog open={aliasOpen} initialValue={String(chrome.user?.user_metadata?.name || '')} onConfirm={(value) => { setAliasOpen(false); startRoom(pendingLink ?? null, value) }} />
+      <CharacterWorldPicker
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        title="월드를 골라 새 대화를 시작하세요"
+        description="원하는 월드를 고르면 캐릭터 결은 유지한 채 그 장면 안으로 바로 들어갑니다."
+        emptyOption={{ title: '캐릭터 단독으로 시작', body: '월드 없이 캐릭터 자체의 결로 바로 대화를 시작합니다.' }}
+        items={worldPickerItems}
+        onSelect={(worldSlug) => { setPickerOpen(false); handleStart(worldSlug) }}
+      />
+      <AliasDialog open={aliasOpen} initialValue={String(chrome.user?.user_metadata?.name || '')} onConfirm={(value) => { setAliasOpen(false); startRoom(pendingWorldSlug ?? null, value) }} />
       <div className="grid gap-6 xl:grid-cols-[0.84fr_1.16fr]">
         <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#121418] xl:max-h-[720px]">
           <img src={item.coverImageUrl} alt={item.name} className="h-full w-full object-cover object-top" loading="eager" decoding="async" />
@@ -186,13 +212,19 @@ export function CharacterDetailPage({ chrome, slug }: { chrome: PlatformPageChro
 
 export function WorldDetailPage({ chrome, slug }: { chrome: PlatformPageChromeProps; slug: string }) {
   const [item, setItem] = useState<WorldDetail | null>(null)
+  const [availableCharacters, setAvailableCharacters] = useState<CharacterSummary[]>([])
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [aliasOpen, setAliasOpen] = useState(false)
   const [pendingCharacter, setPendingCharacter] = useState<CharacterSummary | null>(null)
 
   useEffect(() => {
     let mounted = true
-    void platformApi.fetchWorld(slug)
-      .then(({ item }) => { if (mounted) setItem(item) })
+    void Promise.all([platformApi.fetchWorld(slug), platformApi.fetchCharacters('', 'popular')])
+      .then(([world, characters]) => {
+        if (!mounted) return
+        setItem(world.item)
+        setAvailableCharacters(characters.items)
+      })
       .catch((error) => toast.error(error instanceof Error ? error.message : '월드를 불러오지 못했습니다.'))
     return () => { mounted = false }
   }, [slug])
@@ -225,6 +257,23 @@ export function WorldDetailPage({ chrome, slug }: { chrome: PlatformPageChromePr
   return (
     <PageFrame chrome={chrome}>
       <AliasDialog open={aliasOpen} initialValue={String(chrome.user?.user_metadata?.name || '')} onConfirm={(value) => { setAliasOpen(false); if (pendingCharacter) startRoom(pendingCharacter, value) }} />
+      <CharacterWorldPicker
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        title="캐릭터를 골라 이 월드에서 시작하세요"
+        description="추천 캐릭터가 아니라, 지금 보이는 월드에 넣고 싶은 캐릭터를 직접 골라 시작합니다."
+        items={availableCharacters.map((character) => ({
+          id: character.id,
+          title: character.name,
+          body: character.headline || character.summary,
+          value: character.slug,
+        }))}
+        onSelect={(characterSlug) => {
+          setPickerOpen(false)
+          const selected = availableCharacters.find((character) => character.slug === characterSlug)
+          if (selected) handleStart(selected)
+        }}
+      />
       <div className="space-y-6">
         <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#121418]">
           <img src={item.coverImageUrl} alt={item.name} className="h-[360px] w-full object-cover" loading="eager" decoding="async" />
@@ -239,17 +288,15 @@ export function WorldDetailPage({ chrome, slug }: { chrome: PlatformPageChromePr
             <div className="flex flex-wrap gap-2">
               {item.tags.map((tag) => <span key={tag} className="rounded-full bg-white/8 px-3 py-1 text-xs text-white/72">{tag}</span>)}
             </div>
+            <div className="flex flex-wrap gap-3">
+              <Button onClick={() => setPickerOpen(true)}><MessageCircle className="h-4 w-4" />캐릭터 선택 후 시작</Button>
+            </div>
             <PageSection title="월드 정보" className="bg-white/[0.03]">
               <div className="grid gap-3 md:grid-cols-2">
                 {item.worldSections.map((section) => <LinkCard key={section.title} title={section.title} body={section.body} />)}
               </div>
             </PageSection>
           </div>
-          <PageSection title="이 월드에서 잘 맞는 캐릭터" className="bg-[#20242b]">
-            <div className="grid gap-4 md:grid-cols-2">
-              {item.characters.map((character) => <EntityCard key={character.id} item={character} meta={character.creator.name} onClick={() => handleStart(character)} cta="이 캐릭터로 시작" />)}
-            </div>
-          </PageSection>
         </div>
       </div>
     </PageFrame>
@@ -655,19 +702,35 @@ const SituationImageSlotsEditor = ({
 
       {slots.slice(1).map((slot) => (
         <div key={slot.id} className="grid gap-4 rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4 lg:grid-cols-[220px_minmax(0,1fr)]">
-          <FileUploadCard
-            inputId={`${inputPrefix}-${slot.id}-image-upload-input`}
-            title={slot.slot.trim() || '상황별 이미지'}
-            description="이 슬롯은 AI가 현재 상황을 판단했을 때 선택할 수 있습니다."
-            previewUrl={slot.previewUrl}
-            previewAlt={`${slot.slot || '상황별'} 이미지 미리보기`}
-            aspectClassName={aspectClassName}
-            hint={`현재 원본 ${slot.sourceSize || '미선택'} · 슬롯 이름과 사용 조건을 함께 적어주세요.`}
-            isProcessing={processingSlotId === slot.id}
-            onChange={(file) => onUpload(slot.id, file)}
-          />
+          <div className="space-y-3">
+            <div className="overflow-hidden rounded-[1.2rem] border border-white/10 bg-[#111317]">
+              <div className={aspectClassName}>
+                {slot.previewUrl ? (
+                  <img src={slot.previewUrl} alt={`${slot.slot || '상황별'} 이미지 미리보기`} className="h-full w-full object-cover" loading="lazy" decoding="async" />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-sm text-white/38">미리보기 없음</div>
+                )}
+              </div>
+            </div>
+            <label className={`inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-full px-5 text-sm font-semibold tracking-[-0.015em] transition ${processingSlotId === slot.id ? 'pointer-events-none bg-white/8 text-white/48' : 'bg-white text-[#111317] hover:bg-white/92'}`}>
+              <ImagePlus className="h-4 w-4" />{processingSlotId === slot.id ? '이미지 처리 중...' : '이미지 선택'}
+              <input
+                id={`${inputPrefix}-${slot.id}-image-upload-input`}
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  event.currentTarget.value = ''
+                  if (!file) return
+                  onUpload(slot.id, file)
+                }}
+              />
+            </label>
+            <p className="text-xs leading-6 text-white/52">현재 원본 {slot.sourceSize || '미선택'} · 이 슬롯에 이미지를 올려야 AI가 선택할 수 있습니다.</p>
+          </div>
 
-          <div className="grid gap-4">
+          <div className="grid min-w-0 gap-4">
             <Input
               value={slot.slot}
               onChange={(event) => onUpdate(slot.id, { slot: event.target.value, usage: event.target.value })}
@@ -678,7 +741,7 @@ const SituationImageSlotsEditor = ({
               value={slot.trigger}
               onChange={(event) => onUpdate(slot.id, { trigger: event.target.value })}
               placeholder="언제 이 이미지를 써야 하는지 아주 구체적으로 적어주세요. 예) 말싸움이 격해지거나 긴장감이 급상승할 때"
-              className="min-h-[140px] rounded-[1.2rem] border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none placeholder:text-white/35"
+              className="min-h-[140px] w-full rounded-[1.2rem] border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none placeholder:text-white/35"
             />
             <div className="flex justify-end">
               <Button variant="outline" className="border-[#d92c63]/40 text-[#ff8ab2] hover:bg-[#d92c63]/10 hover:text-white" onClick={() => onRemove(slot.id)}>
@@ -727,6 +790,7 @@ export function CreateCharacterPage({ chrome }: { chrome: PlatformPageChromeProp
   }
 
   const mainSlot = imageSlots[0]!
+  const creatorName = String(chrome.user?.user_metadata?.name || chrome.user?.email || '').trim()
 
   if (!chrome.user) {
     return <ProtectedGate chrome={chrome} title="로그인 후 캐릭터를 만들 수 있습니다" description="만든 캐릭터는 바로 홈/상세/최근 대화 흐름에 연결됩니다." />
@@ -838,6 +902,7 @@ export function CreateCharacterPage({ chrome }: { chrome: PlatformPageChromeProp
                 tags: splitCommaValues(tags),
                 visibility: 'public',
                 sourceType,
+                creatorName,
                 coverImageUrl: detailUrl,
                 avatarImageUrl: cardUrl,
                 assets: mainAssets,
@@ -904,6 +969,7 @@ export function CreateWorldPage({ chrome }: { chrome: PlatformPageChromeProps })
 
   const mainSlot = imageSlots[0]!
   const derivedSummary = deriveSummaryFromPrompt(headline, worldPrompt)
+  const creatorName = String(chrome.user?.user_metadata?.name || chrome.user?.email || '').trim()
 
   return (
     <PageFrame chrome={chrome}>
@@ -999,6 +1065,7 @@ export function CreateWorldPage({ chrome }: { chrome: PlatformPageChromeProps })
                 tags: splitCommaValues(tags),
                 visibility: 'public',
                 sourceType,
+                creatorName,
                 coverImageUrl: heroUrl,
                 worldRulesMarkdown: worldPrompt,
                 assets: uploadedAssets,

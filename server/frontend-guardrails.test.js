@@ -255,6 +255,8 @@ test('recent rooms page makes direct-vs-world conversations visually explicit', 
   assert.ok(source.includes('직접 대화'));
   assert.ok(source.includes('월드 결합'));
   assert.ok(source.includes('마지막 장면'));
+  assert.ok(source.includes('캐릭터 선택 후 시작'));
+  assert.equal(source.includes('이 월드에서 잘 맞는 캐릭터'), false);
 });
 
 test('library page exposes owned character/world shelves below recent views', async () => {

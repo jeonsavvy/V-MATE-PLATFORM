@@ -69,6 +69,7 @@ const normalizeCharacterPayload = (payload) => ({
   sourceType: String(payload.sourceType || 'original').trim(),
   coverImageUrl: String(payload.coverImageUrl || '').trim(),
   avatarImageUrl: String(payload.avatarImageUrl || '').trim(),
+  creatorName: String(payload.creatorName || '').trim(),
 });
 
 const normalizeWorldPayload = (payload) => ({
@@ -80,6 +81,7 @@ const normalizeWorldPayload = (payload) => ({
   sourceType: String(payload.sourceType || 'original').trim(),
   coverImageUrl: String(payload.coverImageUrl || '').trim(),
   worldRulesMarkdown: String(payload.worldRulesMarkdown || '').trim(),
+  creatorName: String(payload.creatorName || '').trim(),
 });
 
 const normalizeLinkPayload = (payload) => ({

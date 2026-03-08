@@ -260,6 +260,7 @@ export const getLibraryPayload = (input) => {
 };
 
 export const createCharacter = ({ userId, payload }) => {
+  const creatorName = String(payload.creatorName || payload.profileJson?.creatorName || payload.promptProfileJson?.creatorName || '').trim() || '내 스튜디오';
   const item = {
     id: `character-${randomUUID()}`,
     entityType: 'character',
@@ -270,7 +271,7 @@ export const createCharacter = ({ userId, payload }) => {
     coverImageUrl: payload.coverImageUrl || '',
     avatarImageUrl: payload.avatarImageUrl || payload.coverImageUrl || '',
     tags: payload.tags || [],
-    creator: { id: userId, slug: userId, name: '내 스튜디오' },
+    creator: { id: userId, slug: userId, name: creatorName },
     ownerUserId: userId,
     visibility: payload.visibility || 'private',
     displayStatus: payload.visibility === 'public' ? 'visible' : 'draft',
@@ -290,6 +291,7 @@ export const createCharacter = ({ userId, payload }) => {
       roleTendency: 'support',
       conflictStyle: 'emotion-first',
       worldFitTags: [],
+      creatorName,
       ...(payload.promptProfileJson || {}),
     },
   };
@@ -298,6 +300,7 @@ export const createCharacter = ({ userId, payload }) => {
 };
 
 export const createWorld = ({ userId, payload }) => {
+  const creatorName = String(payload.creatorName || payload.promptProfileJson?.creatorName || '').trim() || '내 스튜디오';
   const item = {
     id: `world-${randomUUID()}`,
     entityType: 'world',
@@ -307,7 +310,7 @@ export const createWorld = ({ userId, payload }) => {
     summary: payload.summary,
     coverImageUrl: payload.coverImageUrl || '',
     tags: payload.tags || [],
-    creator: { id: userId, slug: userId, name: '내 스튜디오' },
+    creator: { id: userId, slug: userId, name: creatorName },
     ownerUserId: userId,
     visibility: payload.visibility || 'private',
     displayStatus: payload.visibility === 'public' ? 'visible' : 'draft',
@@ -326,6 +329,7 @@ export const createWorld = ({ userId, payload }) => {
       tone: payload.headline || payload.summary,
       starterLocations: ['첫 장면 위치'],
       worldTerms: payload.tags || [],
+      creatorName,
       ...(payload.promptProfileJson || {}),
     },
   };

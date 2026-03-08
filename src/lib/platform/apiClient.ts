@@ -118,6 +118,7 @@ export const platformApi = {
     tags: string[]
     visibility: Visibility
     sourceType: string
+    creatorName?: string
     coverImageUrl?: string
     avatarImageUrl?: string
     profileJson?: Record<string, unknown>
@@ -132,6 +133,7 @@ export const platformApi = {
     tags: string[]
     visibility: Visibility
     sourceType: string
+    creatorName?: string
     coverImageUrl?: string
     worldRulesMarkdown?: string
     promptProfileJson?: Record<string, unknown>

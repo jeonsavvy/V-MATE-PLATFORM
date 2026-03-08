@@ -77,7 +77,7 @@ const summarizeCharacter = (row) => ({
   creator: {
     id: row.owner_user_id,
     slug: String(row.owner_user_id || ''),
-    name: row.creator_name || '크리에이터',
+    name: row.profile_json?.creatorName || row.creator_name || '크리에이터',
   },
   visibility: row.visibility,
   displayStatus: row.display_status,
@@ -100,7 +100,7 @@ const summarizeWorld = (row) => ({
   creator: {
     id: row.owner_user_id,
     slug: String(row.owner_user_id || ''),
-    name: row.creator_name || '크리에이터',
+    name: row.prompt_profile_json?.creatorName || row.creator_name || '크리에이터',
   },
   visibility: row.visibility,
   displayStatus: row.display_status,
@@ -484,6 +484,7 @@ export const getLibraryPayload = async ({ event, userId }) => {
 export const createCharacter = async ({ event, userId, payload }) => {
   const client = await userClient(event);
   if (!client) return null;
+  const creatorName = String(payload.creatorName || payload.profileJson?.creatorName || payload.promptProfileJson?.creatorName || '').trim();
   const insertPayload = {
     owner_user_id: userId,
     slug: payload.slug || createHash('sha1').update(`${userId}:${payload.name}:${Date.now()}`).digest('hex').slice(0, 10),
@@ -496,9 +497,9 @@ export const createCharacter = async ({ event, userId, payload }) => {
     display_status: payload.visibility === 'public' ? 'visible' : 'draft',
     source_type: payload.sourceType,
     tags: payload.tags,
-    profile_json: payload.profileJson || { personality: payload.summary, relationship: '처음 대화를 시작하는 거리감' },
+    profile_json: { creatorName, ...(payload.profileJson || { personality: payload.summary, relationship: '처음 대화를 시작하는 거리감' }) },
     speech_style_json: payload.speechStyleJson || { voice: payload.headline || payload.summary },
-    prompt_profile_json: payload.promptProfileJson || { persona: [payload.summary], speechStyle: [payload.headline || payload.summary], relationshipBaseline: '처음 대화를 시작하는 거리감' },
+    prompt_profile_json: { creatorName, ...(payload.promptProfileJson || { persona: [payload.summary], speechStyle: [payload.headline || payload.summary], relationshipBaseline: '처음 대화를 시작하는 거리감' }) },
     published_at: payload.visibility === 'public' ? nowIso() : null,
   };
   const { data, error } = await client.from('characters').insert(insertPayload).select('*').single();
@@ -514,6 +515,7 @@ export const createCharacter = async ({ event, userId, payload }) => {
 export const createWorld = async ({ event, userId, payload }) => {
   const client = await userClient(event);
   if (!client) return null;
+  const creatorName = String(payload.creatorName || payload.promptProfileJson?.creatorName || '').trim();
   const insertPayload = {
     owner_user_id: userId,
     slug: payload.slug || createHash('sha1').update(`${userId}:${payload.name}:${Date.now()}`).digest('hex').slice(0, 10),
@@ -526,7 +528,7 @@ export const createWorld = async ({ event, userId, payload }) => {
     source_type: payload.sourceType,
     tags: payload.tags,
     world_rules_markdown: payload.worldRulesMarkdown,
-    prompt_profile_json: payload.promptProfileJson || { tone: payload.headline || payload.summary, rules: [payload.worldRulesMarkdown || payload.summary], starterLocations: ['첫 장면 위치'], worldTerms: payload.tags || [] },
+    prompt_profile_json: { creatorName, ...(payload.promptProfileJson || { tone: payload.headline || payload.summary, rules: [payload.worldRulesMarkdown || payload.summary], starterLocations: ['첫 장면 위치'], worldTerms: payload.tags || [] }) },
     published_at: payload.visibility === 'public' ? nowIso() : null,
   };
   const { data, error } = await client.from('worlds').insert(insertPayload).select('*').single();
