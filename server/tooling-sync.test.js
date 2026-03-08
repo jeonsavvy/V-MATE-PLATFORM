@@ -69,3 +69,16 @@ test('platform migration upgrades existing schemas via alter-table steps', async
   assert.ok(migration.includes('create policy "Users can insert their own character assets"'));
   assert.ok(migration.includes('create policy "Users can insert their own world assets"'));
 });
+
+test('server source no longer references legacy local demo asset filenames', async () => {
+  const repoFiles = [
+    'server/platform/supabase-platform-repository.js',
+    'src/components/Home.tsx',
+    'src/lib/platform/apiClient.ts',
+  ];
+  const joined = (await Promise.all(repoFiles.map(readUtf8))).join('\n');
+
+  assert.equal(joined.includes('/mika_normal.webp'), false);
+  assert.equal(joined.includes('/world_tokyo.svg'), false);
+  assert.equal(joined.includes('/world_sao.svg'), false);
+});

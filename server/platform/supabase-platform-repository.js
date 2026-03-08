@@ -72,8 +72,8 @@ const summarizeCharacter = (row) => ({
   name: row.name,
   headline: row.headline || '',
   summary: row.summary,
-  coverImageUrl: row.cover_image_url || '/mika_normal.webp',
-  avatarImageUrl: row.avatar_image_url || row.cover_image_url || '/mika_normal.webp',
+  coverImageUrl: row.cover_image_url || '',
+  avatarImageUrl: row.avatar_image_url || row.cover_image_url || '',
   tags: Array.isArray(row.tags) ? row.tags : [],
   creator: {
     id: row.owner_user_id,
@@ -96,7 +96,7 @@ const summarizeWorld = (row) => ({
   name: row.name,
   headline: row.headline || '',
   summary: row.summary,
-  coverImageUrl: row.cover_image_url || '/world_tokyo.svg',
+  coverImageUrl: row.cover_image_url || '',
   tags: Array.isArray(row.tags) ? row.tags : [],
   creator: {
     id: row.owner_user_id,
@@ -248,7 +248,7 @@ export const getHomePayload = async ({ tab = 'characters', search = '', filter =
       hero: {
         title: hero?.name || '캐릭터',
         subtitle: hero?.headline || hero?.summary || '',
-        coverImageUrl: hero?.coverImageUrl || '/world_tokyo.svg',
+        coverImageUrl: hero?.coverImageUrl || '',
         targetPath: hero?.entityType === 'world' ? `/worlds/${hero.slug}` : `/characters/${hero?.slug || characters[0]?.slug || ''}`,
       },
       characterFeed: { items: characters },
