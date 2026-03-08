@@ -314,13 +314,37 @@ export function RoomPage({ chrome, roomId }: { chrome: PlatformPageChromeProps; 
   const activeCharacterImage = useMemo(() => {
     if (!room) return ''
     const latestAssistant = [...room.messages].reverse().find((message) => message.role === 'assistant' && typeof message.content === 'object')
-    const emotion = latestAssistant && typeof latestAssistant.content === 'object' ? latestAssistant.content.emotion : 'normal'
+    const content = latestAssistant && typeof latestAssistant.content === 'object' ? latestAssistant.content : null
+    const explicitSlot = content?.character_image_slot?.trim()
+    const emotion = content?.emotion || 'normal'
     const slots = room.character.imageSlots || []
+    if (explicitSlot) {
+      const matched = slots.find((slot) => slot.slot === explicitSlot)
+      if (matched) {
+        return matched.detailUrl || matched.cardUrl || room.character.coverImageUrl
+      }
+    }
     const selected =
       slots.find((slot) => slot.slot === emotion) ||
       slots.find((slot) => slot.slot === 'normal') ||
       slots.find((slot) => slot.slot === 'main')
     return selected?.detailUrl || room.character.coverImageUrl
+  }, [room])
+
+  const activeWorldImage = useMemo(() => {
+    if (!room?.world) return ''
+    const latestAssistant = [...room.messages].reverse().find((message) => message.role === 'assistant' && typeof message.content === 'object')
+    const explicitSlot = latestAssistant && typeof latestAssistant.content === 'object'
+      ? latestAssistant.content.world_image_slot?.trim()
+      : ''
+    const slots = room.world.imageSlots || []
+    if (explicitSlot) {
+      const matched = slots.find((slot) => slot.slot === explicitSlot)
+      if (matched) {
+        return matched.detailUrl || matched.cardUrl || room.world.coverImageUrl
+      }
+    }
+    return slots.find((slot) => slot.slot === 'main')?.detailUrl || room.world.coverImageUrl
   }, [room])
 
   return (
@@ -329,8 +353,15 @@ export function RoomPage({ chrome, roomId }: { chrome: PlatformPageChromeProps; 
         <EmptyState title="대화를 불러오는 중" description="최근 장면과 상태를 정리하고 있습니다." />
       ) : (
         <div className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
-          <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#121418]">
-            <img src={activeCharacterImage} alt={room.character.name} className="h-full w-full object-cover object-top" loading="eager" decoding="async" />
+          <div className="space-y-4">
+            {room.world ? (
+              <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#121418]">
+                <img src={activeWorldImage} alt={room.world.name} className="h-[240px] w-full object-cover" loading="eager" decoding="async" />
+              </div>
+            ) : null}
+            <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#121418]">
+              <img src={activeCharacterImage} alt={room.character.name} className="h-full w-full object-cover object-top" loading="eager" decoding="async" />
+            </div>
           </div>
           <div className="space-y-6 rounded-[2rem] border border-white/10 bg-[#20242b] p-6">
             <div className="flex items-start justify-between gap-4">
@@ -461,13 +492,13 @@ interface ImageSlotDraft {
 
 const createSlotId = () => `slot-${Math.random().toString(36).slice(2, 10)}`
 
-const toSlotVariants = (slotId: string) =>
-  CHARACTER_VARIANTS.map((variant) => ({
+const toEntitySlotVariants = (slotId: string, variants: typeof CHARACTER_VARIANTS | typeof WORLD_VARIANTS) =>
+  variants.map((variant) => ({
     ...variant,
     kind: `${slotId}:${variant.kind}`,
   }))
 
-const createInitialCharacterSlot = (slot: string, usage: string, trigger: string, priority: string): ImageSlotDraft => ({
+const createImageSlotDraft = (slot: string, usage: string, trigger: string, priority: string): ImageSlotDraft => ({
   id: createSlotId(),
   slot,
   usage,
@@ -533,7 +564,7 @@ const buildSlotRecord = ({
   uploadedAssets: Array<{ kind: string; url: string; width: number; height: number }>
 }) => {
   const variants = uploadedAssets.filter((asset) => asset.kind.startsWith(`${slot.id}:`))
-  const findVariant = (variantKind: 'thumb' | 'card' | 'detail') =>
+  const findVariant = (variantKind: 'thumb' | 'card' | 'detail' | 'hero') =>
     variants.find((asset) => asset.kind === `${slot.id}:${variantKind}`)?.url || ''
 
   return {
@@ -544,7 +575,7 @@ const buildSlotRecord = ({
     priority: Number(slot.priority || 0),
     thumbUrl: findVariant('thumb'),
     cardUrl: findVariant('card'),
-    detailUrl: findVariant('detail'),
+    detailUrl: findVariant('detail') || findVariant('hero'),
   }
 }
 
@@ -554,22 +585,124 @@ const splitCommaValues = (value: string) =>
     .map((item) => item.trim())
     .filter(Boolean)
 
+const deriveSummaryFromPrompt = (headline: string, prompt: string) => {
+  const primaryLine = String(prompt || '')
+    .split('\n')
+    .map((item) => item.replace(/^[-*0-9.)\s]+/, '').trim())
+    .find(Boolean)
+
+  return (String(headline || '').trim() || primaryLine || '설명이 아직 없습니다.').slice(0, 120)
+}
+
+const PromptGuide = ({ title, bullets }: { title: string; bullets: string[] }) => (
+  <div className="rounded-[1.4rem] border border-white/10 bg-white/[0.04] p-4 text-sm leading-6 text-white/68">
+    <p className="font-semibold text-white">{title}</p>
+    <ul className="mt-3 space-y-2">
+      {bullets.map((bullet) => <li key={bullet}>• {bullet}</li>)}
+    </ul>
+  </div>
+)
+
+const SituationImageSlotsEditor = ({
+  sectionTitle,
+  mainDescription,
+  aspectClassName,
+  slots,
+  processingSlotId,
+  inputPrefix,
+  onUpload,
+  onAdd,
+  onUpdate,
+  onRemove,
+}: {
+  sectionTitle: string
+  mainDescription: string
+  aspectClassName: string
+  slots: ImageSlotDraft[]
+  processingSlotId: string | null
+  inputPrefix: string
+  onUpload: (slotId: string, file: File) => void
+  onAdd: () => void
+  onUpdate: (slotId: string, patch: Partial<ImageSlotDraft>) => void
+  onRemove: (slotId: string) => void
+}) => {
+  const mainSlot = slots[0]
+  if (!mainSlot) return null
+
+  return (
+    <div className="space-y-4">
+      <FileUploadCard
+        inputId={`${inputPrefix}-main-image-upload-input`}
+        title="대표 이미지"
+        description={mainDescription}
+        previewUrl={mainSlot.previewUrl}
+        previewAlt={`${sectionTitle} 대표 이미지 미리보기`}
+        aspectClassName={aspectClassName}
+        hint={`현재 원본 ${mainSlot.sourceSize || '미선택'} · AI가 상황에 따라 추가 이미지로 전환할 수 있습니다.`}
+        isProcessing={processingSlotId === mainSlot.id}
+        onChange={(file) => onUpload(mainSlot.id, file)}
+      />
+
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-white">상황별 이미지 추가</p>
+          <p className="mt-1 text-sm leading-6 text-white/56">장면이 바뀔 때 어떤 이미지로 전환할지 슬롯별로 지정합니다.</p>
+        </div>
+        <Button variant="outline" onClick={onAdd}>
+          <ImagePlus className="h-4 w-4" />상황별 이미지 추가
+        </Button>
+      </div>
+
+      {slots.slice(1).map((slot) => (
+        <div key={slot.id} className="grid gap-4 rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <FileUploadCard
+            inputId={`${inputPrefix}-${slot.id}-image-upload-input`}
+            title={slot.slot.trim() || '상황별 이미지'}
+            description="이 슬롯은 AI가 현재 상황을 판단했을 때 선택할 수 있습니다."
+            previewUrl={slot.previewUrl}
+            previewAlt={`${slot.slot || '상황별'} 이미지 미리보기`}
+            aspectClassName={aspectClassName}
+            hint={`현재 원본 ${slot.sourceSize || '미선택'} · 슬롯 이름과 사용 조건을 함께 적어주세요.`}
+            isProcessing={processingSlotId === slot.id}
+            onChange={(file) => onUpload(slot.id, file)}
+          />
+
+          <div className="grid gap-4">
+            <Input
+              value={slot.slot}
+              onChange={(event) => onUpdate(slot.id, { slot: event.target.value, usage: event.target.value })}
+              placeholder="이미지 이름 (예: battle, rain, night)"
+              className="bg-white/5 text-white placeholder:text-white/35"
+            />
+            <textarea
+              value={slot.trigger}
+              onChange={(event) => onUpdate(slot.id, { trigger: event.target.value })}
+              placeholder="언제 이 이미지를 써야 하는지 아주 구체적으로 적어주세요. 예) 말싸움이 격해지거나 긴장감이 급상승할 때"
+              className="min-h-[140px] rounded-[1.2rem] border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none placeholder:text-white/35"
+            />
+            <div className="flex justify-end">
+              <Button variant="outline" className="border-[#d92c63]/40 text-[#ff8ab2] hover:bg-[#d92c63]/10 hover:text-white" onClick={() => onRemove(slot.id)}>
+                <Trash2 className="h-4 w-4" />슬롯 삭제
+              </Button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 const selectStyle = { colorScheme: 'dark' as const }
 
 export function CreateCharacterPage({ chrome }: { chrome: PlatformPageChromeProps }) {
   const [name, setName] = useState('')
   const [headline, setHeadline] = useState('')
-  const [summary, setSummary] = useState('')
   const [tags, setTags] = useState('')
-  const [visibility, setVisibility] = useState<'private' | 'unlisted' | 'public'>('private')
   const [sourceType, setSourceType] = useState<'original' | 'derivative'>('original')
-  const [personality, setPersonality] = useState('')
-  const [voice, setVoice] = useState('')
-  const [relationship, setRelationship] = useState('')
-  const [forbiddenTone, setForbiddenTone] = useState('')
+  const [characterPrompt, setCharacterPrompt] = useState('')
   const [processingSlotId, setProcessingSlotId] = useState<string | null>(null)
   const [imageSlots, setImageSlots] = useState<ImageSlotDraft[]>(() => [
-    createInitialCharacterSlot('main', '대표 이미지', '기본 대표 비주얼', '100'),
+    createImageSlotDraft('main', '대표 이미지', '기본 대표 비주얼', '100'),
   ])
 
   const updateSlot = (slotId: string, patch: Partial<ImageSlotDraft>) => {
@@ -578,7 +711,7 @@ export function CreateCharacterPage({ chrome }: { chrome: PlatformPageChromeProp
 
   const handleSlotUpload = (slotId: string, file: File) => {
     setProcessingSlotId(slotId)
-    void createImageVariants({ file, variants: toSlotVariants(slotId) })
+    void createImageVariants({ file, variants: toEntitySlotVariants(slotId, CHARACTER_VARIANTS) })
       .then((assets) => {
         const preview = assets.find((asset) => asset.kind.endsWith(':detail')) || assets[0]
         updateSlot(slotId, {
@@ -598,6 +731,8 @@ export function CreateCharacterPage({ chrome }: { chrome: PlatformPageChromeProp
     return <ProtectedGate chrome={chrome} title="로그인 후 캐릭터를 만들 수 있습니다" description="만든 캐릭터는 바로 홈/상세/최근 대화 흐름에 연결됩니다." />
   }
 
+  const derivedSummary = deriveSummaryFromPrompt(headline, characterPrompt)
+
   return (
     <PageFrame chrome={chrome}>
       <div className="mx-auto max-w-4xl space-y-6">
@@ -605,65 +740,67 @@ export function CreateCharacterPage({ chrome }: { chrome: PlatformPageChromeProp
           <div className="grid gap-4">
             <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="캐릭터 이름" className="bg-white/5 text-white placeholder:text-white/35" />
             <Input value={headline} onChange={(event) => setHeadline(event.target.value)} placeholder="한 줄 소개" className="bg-white/5 text-white placeholder:text-white/35" />
-            <textarea value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="이 캐릭터가 어떤 인물인지, 어떤 매력으로 대화가 흘러가야 하는지 적어주세요." className="min-h-[180px] rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4 text-[15px] leading-7 text-white outline-none placeholder:text-white/35" />
             <Input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="태그 (쉼표로 구분)" className="bg-white/5 text-white placeholder:text-white/35" />
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="space-y-2 text-sm text-white/62">
-                <span>공개 상태</span>
-                <select value={visibility} onChange={(event) => setVisibility(event.target.value as typeof visibility)} className="h-12 w-full rounded-[1rem] border border-white/10 bg-[#15181d] px-4 text-white outline-none" style={selectStyle}>
-                  <option className="bg-[#15181d] text-white" value="private">비공개</option>
-                  <option className="bg-[#15181d] text-white" value="unlisted">링크 공개</option>
-                  <option className="bg-[#15181d] text-white" value="public">전체 공개</option>
-                </select>
-              </label>
-              <label className="space-y-2 text-sm text-white/62">
-                <span>원작 여부</span>
-                <select value={sourceType} onChange={(event) => setSourceType(event.target.value as typeof sourceType)} className="h-12 w-full rounded-[1rem] border border-white/10 bg-[#15181d] px-4 text-white outline-none" style={selectStyle}>
-                  <option className="bg-[#15181d] text-white" value="original">오리지널</option>
-                  <option className="bg-[#15181d] text-white" value="derivative">2차창작</option>
-                </select>
-              </label>
+            <div className="rounded-[1.2rem] border border-[#62d0ff]/20 bg-[#62d0ff]/10 px-4 py-3 text-sm text-white/78">
+              기본 저장값은 <span className="font-semibold text-white">전체 공개</span>입니다.
             </div>
+            <label className="space-y-2 text-sm text-white/62">
+              <span>원작 여부</span>
+              <select value={sourceType} onChange={(event) => setSourceType(event.target.value as typeof sourceType)} className="h-12 w-full rounded-[1rem] border border-white/10 bg-[#15181d] px-4 text-white outline-none" style={selectStyle}>
+                <option className="bg-[#15181d] text-white" value="original">오리지널</option>
+                <option className="bg-[#15181d] text-white" value="derivative">2차창작</option>
+              </select>
+            </label>
           </div>
         </PageSection>
 
-        <PageSection title="캐릭터 설정">
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="space-y-2">
-              <span className="text-sm font-semibold text-white">성격 / 핵심 매력</span>
-              <textarea value={personality} onChange={(event) => setPersonality(event.target.value)} placeholder="예) 무심한 척 챙겨주고, 가까워질수록 장난이 늘어나는 타입" className="min-h-[150px] w-full rounded-[1.3rem] border border-white/10 bg-white/5 px-4 py-3 text-white outline-none placeholder:text-white/35" />
-            </label>
-            <label className="space-y-2">
-              <span className="text-sm font-semibold text-white">말투</span>
-              <textarea value={voice} onChange={(event) => setVoice(event.target.value)} placeholder="예) 짧은 문장, 반말, 툭 던지는 어투" className="min-h-[150px] w-full rounded-[1.3rem] border border-white/10 bg-white/5 px-4 py-3 text-white outline-none placeholder:text-white/35" />
-            </label>
-            <label className="space-y-2">
-              <span className="text-sm font-semibold text-white">처음 관계 / 거리감</span>
-              <textarea value={relationship} onChange={(event) => setRelationship(event.target.value)} placeholder="예) 처음엔 낯설지만, 몇 마디면 금방 가까워질 수 있는 거리" className="min-h-[150px] w-full rounded-[1.3rem] border border-white/10 bg-white/5 px-4 py-3 text-white outline-none placeholder:text-white/35" />
-            </label>
-            <label className="space-y-2">
-              <span className="text-sm font-semibold text-white">깨지면 안 되는 설정</span>
-              <textarea value={forbiddenTone} onChange={(event) => setForbiddenTone(event.target.value)} placeholder="절대 하지 말아야 할 말투나 설정 붕괴 포인트를 적어주세요." className="min-h-[150px] w-full rounded-[1.3rem] border border-white/10 bg-white/5 px-4 py-3 text-white outline-none placeholder:text-white/35" />
-            </label>
+        <PageSection title="캐릭터 프롬프트">
+          <div className="space-y-4">
+            <PromptGuide
+              title="이 프롬프트에 꼭 들어가야 할 것"
+              bullets={[
+                '캐릭터의 핵심 정체성: 누구인지, 왜 매력적인지, 사용자가 왜 붙게 되는지.',
+                '말투 규칙: 존댓말/반말, 문장 길이, 자주 쓰는 어휘, 금지해야 할 어휘.',
+                '관계 시작점: 처음 만났을 때 거리감, 경계심, 호감도, 주도권.',
+                '행동 규칙: 갈등 시 반응, 다정함 표현 방식, 질투/당황/분노 시 변화.',
+                '금지 규칙: 절대 깨지면 안 되는 설정, 말버릇, 세계관 위반 요소.',
+                '이미지 전환 힌트: 어떤 장면이면 어떤 상황별 이미지 슬롯을 써야 하는지 같이 적기.',
+              ]}
+            />
+            <textarea
+              value={characterPrompt}
+              onChange={(event) => setCharacterPrompt(event.target.value)}
+              placeholder={[
+                '예시 구조',
+                '1) 캐릭터 정체성: 무심한 척하지만 실제로는 상대를 세심하게 챙기는 인물.',
+                '2) 말투: 짧은 문장, 반말, 감정이 올라가면 더 직설적이지만 과하게 거칠어지지 않는다.',
+                '3) 관계 시작: 처음에는 조금 거리를 두지만 사용자가 솔직하면 빠르게 가까워진다.',
+                '4) 갈등/감정: 질투나 긴장 상황에서는 차갑게 굳지만 완전히 밀어내지는 않는다.',
+                '5) 금지: 과장된 밈 말투 금지, 갑자기 다른 인격처럼 붕괴 금지.',
+                '6) 이미지 전환: 대치/긴장 장면이면 battle 슬롯, 편안하고 가까운 장면이면 cozy 슬롯 사용.',
+              ].join('\n')}
+              className="min-h-[360px] w-full rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4 text-[15px] leading-7 text-white outline-none placeholder:text-white/35"
+            />
           </div>
         </PageSection>
 
         <PageSection title="캐릭터 이미지">
-          <FileUploadCard
-            inputId="character-main-image-upload-input"
-            title="대표 이미지"
-            description="대표 비주얼 한 장만 먼저 올리세요. 필수만 채워도 바로 캐릭터를 만들 수 있습니다."
-            previewUrl={mainSlot.previewUrl}
-            previewAlt={`${name || '캐릭터'} 대표 이미지 미리보기`}
+          <SituationImageSlotsEditor
+            sectionTitle={name || '캐릭터'}
+            mainDescription="대표 이미지는 기본 표정/기본 상태입니다. 아래에 상황별 이미지를 추가하면 AI가 현재 장면을 보고 전환할 수 있습니다."
             aspectClassName="aspect-[3/4]"
-            hint={`권장 3:4 · 현재 원본 ${mainSlot.sourceSize || '미선택'} · 자동으로 thumb/card/detail 생성`}
-            isProcessing={processingSlotId === mainSlot.id}
-            onChange={(file) => handleSlotUpload(mainSlot.id, file)}
+            slots={imageSlots}
+            processingSlotId={processingSlotId}
+            inputPrefix="character"
+            onUpload={handleSlotUpload}
+            onAdd={() => setImageSlots((prev) => [...prev, createImageSlotDraft(`scene-${prev.length}`, `scene-${prev.length}`, '', String(Math.max(10, 100 - prev.length * 10)))])}
+            onUpdate={updateSlot}
+            onRemove={(slotId) => setImageSlots((prev) => prev.filter((slot) => slot.id !== slotId))}
           />
         </PageSection>
 
         <div className="flex justify-end">
-          <Button disabled={processingSlotId !== null || !name.trim() || !summary.trim() || mainSlot.assets.length === 0} onClick={() => {
+          <Button disabled={processingSlotId !== null || !name.trim() || !headline.trim() || !characterPrompt.trim() || mainSlot.assets.length === 0} onClick={() => {
             void (async () => {
               const slotAssets = imageSlots.flatMap((slot) => slot.assets)
               const uploadedAssets = slotAssets.length > 0
@@ -684,26 +821,24 @@ export function CreateCharacterPage({ chrome }: { chrome: PlatformPageChromeProp
               const { item } = await platformApi.createCharacter({
                 name,
                 headline,
-                summary,
+                summary: derivedSummary,
                 tags: splitCommaValues(tags),
-                visibility,
+                visibility: 'public',
                 sourceType,
                 coverImageUrl: detailUrl,
                 avatarImageUrl: cardUrl,
                 assets: mainAssets,
                 profileJson: {
-                  personality,
-                  relationship,
-                  forbiddenTone,
+                  prompt: characterPrompt,
                 },
                 speechStyleJson: {
-                  voice,
-                  forbiddenTone,
+                  prompt: characterPrompt,
                 },
                 promptProfileJson: {
-                  persona: personality.trim() ? [personality.trim()] : [],
-                  speechStyle: voice.trim() ? [voice.trim()] : [],
-                  relationshipBaseline: relationship.trim(),
+                  masterPrompt: characterPrompt.trim(),
+                  persona: characterPrompt.trim() ? [characterPrompt.trim()] : [],
+                  speechStyle: headline.trim() ? [headline.trim()] : [],
+                  relationshipBaseline: '처음 관계는 캐릭터 프롬프트 지시를 따른다.',
                   imageSlots: imageSlotRecords,
                 },
               })
@@ -720,21 +855,40 @@ export function CreateCharacterPage({ chrome }: { chrome: PlatformPageChromeProp
 export function CreateWorldPage({ chrome }: { chrome: PlatformPageChromeProps }) {
   const [name, setName] = useState('')
   const [headline, setHeadline] = useState('')
-  const [summary, setSummary] = useState('')
   const [tags, setTags] = useState('')
-  const [visibility, setVisibility] = useState<'private' | 'unlisted' | 'public'>('private')
   const [sourceType, setSourceType] = useState<'original' | 'derivative'>('original')
-  const [rules, setRules] = useState('')
-  const [genre, setGenre] = useState('')
-  const [settingPeriod, setSettingPeriod] = useState('')
-  const [starterLocations, setStarterLocations] = useState('')
-  const [isProcessingImage, setIsProcessingImage] = useState(false)
-  const [imageAssets, setImageAssets] = useState<ResizedImageAsset[]>([])
-  const worldPreview = imageAssets.find((asset) => asset.kind === 'hero') || imageAssets[0]
+  const [worldPrompt, setWorldPrompt] = useState('')
+  const [processingSlotId, setProcessingSlotId] = useState<string | null>(null)
+  const [imageSlots, setImageSlots] = useState<ImageSlotDraft[]>(() => [
+    createImageSlotDraft('main', '대표 이미지', '기본 월드 비주얼', '100'),
+  ])
 
   if (!chrome.user) {
     return <ProtectedGate chrome={chrome} title="로그인 후 월드를 만들 수 있습니다" description="만든 월드는 캐릭터와 연결해 바로 새 대화를 시작할 수 있습니다." />
   }
+
+  const updateSlot = (slotId: string, patch: Partial<ImageSlotDraft>) => {
+    setImageSlots((prev) => prev.map((slot) => slot.id === slotId ? { ...slot, ...patch } : slot))
+  }
+
+  const handleSlotUpload = (slotId: string, file: File) => {
+    setProcessingSlotId(slotId)
+    void createImageVariants({ file, variants: toEntitySlotVariants(slotId, WORLD_VARIANTS) })
+      .then((assets) => {
+        const preview = assets.find((asset) => asset.kind.endsWith(':hero')) || assets[0]
+        updateSlot(slotId, {
+          assets,
+          previewUrl: preview?.dataUrl || '',
+          sourceSize: preview ? `${preview.sourceWidth}×${preview.sourceHeight}` : '',
+        })
+        toast.success('월드 이미지 파생본을 생성했습니다.')
+      })
+      .catch((error) => toast.error(error instanceof Error ? error.message : '이미지 처리에 실패했습니다.'))
+      .finally(() => setProcessingSlotId(null))
+  }
+
+  const mainSlot = imageSlots[0]!
+  const derivedSummary = deriveSummaryFromPrompt(headline, worldPrompt)
 
   return (
     <PageFrame chrome={chrome}>
@@ -743,93 +897,97 @@ export function CreateWorldPage({ chrome }: { chrome: PlatformPageChromeProps })
           <div className="grid gap-4">
             <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="월드 이름" className="bg-white/5 text-white placeholder:text-white/35" />
             <Input value={headline} onChange={(event) => setHeadline(event.target.value)} placeholder="한 줄 설명" className="bg-white/5 text-white placeholder:text-white/35" />
-            <textarea value={summary} onChange={(event) => setSummary(event.target.value)} placeholder="이 월드가 어떤 분위기인지, 어떤 장면이 펼쳐지는지 간단히 설명해 주세요." className="min-h-[160px] rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4 text-[15px] leading-7 text-white outline-none placeholder:text-white/35" />
             <Input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="태그 (쉼표로 구분)" className="bg-white/5 text-white placeholder:text-white/35" />
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="space-y-2 text-sm text-white/62">
-                <span>공개 상태</span>
-                <select value={visibility} onChange={(event) => setVisibility(event.target.value as typeof visibility)} className="h-12 w-full rounded-[1rem] border border-white/10 bg-[#15181d] px-4 text-white outline-none" style={selectStyle}>
-                  <option className="bg-[#15181d] text-white" value="private">비공개</option>
-                  <option className="bg-[#15181d] text-white" value="unlisted">링크 공개</option>
-                  <option className="bg-[#15181d] text-white" value="public">전체 공개</option>
-                </select>
-              </label>
-              <label className="space-y-2 text-sm text-white/62">
-                <span>원작 여부</span>
-                <select value={sourceType} onChange={(event) => setSourceType(event.target.value as typeof sourceType)} className="h-12 w-full rounded-[1rem] border border-white/10 bg-[#15181d] px-4 text-white outline-none" style={selectStyle}>
-                  <option className="bg-[#15181d] text-white" value="original">오리지널</option>
-                  <option className="bg-[#15181d] text-white" value="derivative">2차창작</option>
-                </select>
-              </label>
+            <div className="rounded-[1.2rem] border border-[#62d0ff]/20 bg-[#62d0ff]/10 px-4 py-3 text-sm text-white/78">
+              기본 저장값은 <span className="font-semibold text-white">전체 공개</span>입니다.
             </div>
-          </div>
-        </PageSection>
-
-        <PageSection title="월드 설명">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Input value={genre} onChange={(event) => setGenre(event.target.value)} placeholder="장르" className="bg-white/5 text-white placeholder:text-white/35" />
-            <Input value={settingPeriod} onChange={(event) => setSettingPeriod(event.target.value)} placeholder="시대 / 배경 시간" className="bg-white/5 text-white placeholder:text-white/35" />
-            <Input value={starterLocations} onChange={(event) => setStarterLocations(event.target.value)} placeholder="첫 장면 장소 (쉼표로 구분)" className="bg-white/5 text-white placeholder:text-white/35 md:col-span-2" />
-            <label className="space-y-2 md:col-span-2">
-              <span className="text-sm font-semibold text-white">분위기 / 핵심 규칙</span>
-              <textarea value={rules} onChange={(event) => setRules(event.target.value)} placeholder="이 월드에서 꼭 지켜야 하는 분위기, 주요 규칙, 플레이 감각을 적어주세요." className="min-h-[180px] w-full rounded-[1.2rem] border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none placeholder:text-white/35" />
+            <label className="space-y-2 text-sm text-white/62">
+              <span>원작 여부</span>
+              <select value={sourceType} onChange={(event) => setSourceType(event.target.value as typeof sourceType)} className="h-12 w-full rounded-[1rem] border border-white/10 bg-[#15181d] px-4 text-white outline-none" style={selectStyle}>
+                <option className="bg-[#15181d] text-white" value="original">오리지널</option>
+                <option className="bg-[#15181d] text-white" value="derivative">2차창작</option>
+              </select>
             </label>
           </div>
         </PageSection>
 
+        <PageSection title="월드 프롬프트">
+          <div className="space-y-4">
+            <PromptGuide
+              title="이 프롬프트에 꼭 들어가야 할 것"
+              bullets={[
+                '세계의 핵심 톤: 현실/판타지/게임 등 어떤 감도로 읽혀야 하는지.',
+                '장면 규칙: 첫 진입 장면, 기본 압력, 긴장감, 사용자가 들어왔을 때 바로 벌어지는 일.',
+                '공간/용어: 자주 등장하는 장소, 조직, 사물, 용어, 금지 전개.',
+                '캐릭터 결합 규칙: 어떤 타입의 캐릭터가 와도 세계관이 안 깨지게 유지해야 하는 룰.',
+                '이미지 전환 힌트: 비, 밤, 전투, 축제, 붕괴 직전 같은 장면 변화에 어떤 슬롯을 써야 하는지.',
+              ]}
+            />
+            <textarea
+              value={worldPrompt}
+              onChange={(event) => setWorldPrompt(event.target.value)}
+              placeholder={[
+                '예시 구조',
+                '1) 세계 톤: 비가 자주 오는 현실 도시, 심야의 눅눅함과 정적이 중요하다.',
+                '2) 시작 장면: 사용자가 들어오면 편의점 앞/횡단보도/비 젖은 골목 중 한 곳에서 장면이 시작된다.',
+                '3) 유지 규칙: 과장된 판타지 요소 금지, 현실적인 대사와 공간감 유지.',
+                '4) 긴장 포인트: 늦은 밤, 막차, 비, 젖은 신발 소리, 짧은 침묵이 압력으로 작동한다.',
+                '5) 금지: 갑자기 코미디 톤으로 붕괴 금지, 현실성 없는 초전개 금지.',
+                '6) 이미지 전환: 비가 강해지면 rain 슬롯, 네온과 밤거리가 강조되면 neon-night 슬롯 사용.',
+              ].join('\n')}
+              className="min-h-[360px] w-full rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4 text-[15px] leading-7 text-white outline-none placeholder:text-white/35"
+            />
+          </div>
+        </PageSection>
+
         <PageSection title="월드 이미지">
-          <FileUploadCard
-            inputId="world-image-upload-input"
-            title="대표 이미지"
-            description="월드를 대표하는 가로형 이미지 한 장만 올리세요. 깨지는 기본 파일 입력 UI 대신 간단한 업로드 카드로 정리했습니다."
-            previewUrl={worldPreview?.dataUrl || ''}
-            previewAlt={`${name || '월드'} 대표 이미지 미리보기`}
+          <SituationImageSlotsEditor
+            sectionTitle={name || '월드'}
+            mainDescription="대표 이미지는 기본 장면입니다. 아래에 비, 밤, 전투, 축제 같은 상황별 장면 이미지를 추가할 수 있습니다."
             aspectClassName="aspect-[16/9]"
-            hint={`권장 16:9 · 현재 원본 ${worldPreview ? `${worldPreview.sourceWidth}×${worldPreview.sourceHeight}` : '미선택'} · 자동으로 thumb/card/hero 생성`}
-            isProcessing={isProcessingImage}
-            onChange={(file) => {
-              setIsProcessingImage(true)
-              void createImageVariants({ file, variants: WORLD_VARIANTS })
-                .then((assets) => {
-                  setImageAssets(assets)
-                  toast.success('월드 이미지 파생본을 생성했습니다.')
-                })
-                .catch((error) => toast.error(error instanceof Error ? error.message : '이미지 처리에 실패했습니다.'))
-                .finally(() => setIsProcessingImage(false))
-            }}
+            slots={imageSlots}
+            processingSlotId={processingSlotId}
+            inputPrefix="world"
+            onUpload={handleSlotUpload}
+            onAdd={() => setImageSlots((prev) => [...prev, createImageSlotDraft(`scene-${prev.length}`, `scene-${prev.length}`, '', String(Math.max(10, 100 - prev.length * 10)))])}
+            onUpdate={updateSlot}
+            onRemove={(slotId) => setImageSlots((prev) => prev.filter((slot) => slot.id !== slotId))}
           />
         </PageSection>
 
         <div className="flex justify-end">
-          <Button disabled={isProcessingImage || !name.trim() || !summary.trim() || imageAssets.length === 0} onClick={() => {
+          <Button disabled={processingSlotId !== null || !name.trim() || !headline.trim() || !worldPrompt.trim() || mainSlot.assets.length === 0} onClick={() => {
             void (async () => {
-              const uploadedAssets = imageAssets.length > 0
-                ? await uploadPreparedAssets({ entityType: 'world', assets: imageAssets })
+              const slotAssets = imageSlots.flatMap((slot) => slot.assets)
+              const uploadedAssets = slotAssets.length > 0
+                ? await uploadPreparedAssets({ entityType: 'world', assets: slotAssets })
                 : []
-              const heroUrl = uploadedAssets.find((asset) => asset.kind === 'hero')?.url || ''
+              const imageSlotRecords = imageSlots.map((slot) => buildSlotRecord({ slot, uploadedAssets }))
+              const mainRecord = imageSlotRecords[0]
+              const heroUrl = mainRecord?.detailUrl || uploadedAssets.find((asset) => asset.kind === `${mainSlot.id}:hero`)?.url || ''
               const { item } = await platformApi.createWorld({
                 name,
                 headline,
-                summary,
+                summary: derivedSummary,
                 tags: splitCommaValues(tags),
-                visibility,
+                visibility: 'public',
                 sourceType,
                 coverImageUrl: heroUrl,
-                worldRulesMarkdown: rules,
+                worldRulesMarkdown: worldPrompt,
                 assets: uploadedAssets,
                 promptProfileJson: {
-                  genreKey: genre.trim(),
-                  genre: genre.trim(),
-                  settingPeriod: settingPeriod.trim(),
-                  starterLocations: splitCommaValues(starterLocations),
-                  tone: headline.trim() || summary.trim(),
+                  masterPrompt: worldPrompt.trim(),
+                  rules: worldPrompt.trim() ? [worldPrompt.trim()] : [],
+                  tone: headline.trim() || derivedSummary,
+                  starterLocations: [],
                   worldTerms: splitCommaValues(tags),
+                  imageSlots: imageSlotRecords,
                 },
               })
               toast.success('월드를 만들었습니다.')
               chrome.onNavigate(`/worlds/${item.slug}`)
             })().catch((error) => toast.error(error instanceof Error ? error.message : '월드 생성에 실패했습니다.'))
-          }}><PlusCircle className="h-4 w-4" />{isProcessingImage ? '이미지 처리 중...' : '월드 저장'}</Button>
+          }}><PlusCircle className="h-4 w-4" />{processingSlotId ? '이미지 처리 중...' : '월드 저장'}</Button>
         </div>
       </div>
     </PageFrame>
@@ -859,7 +1017,17 @@ export function RecentRoomsPage({ chrome }: { chrome: PlatformPageChromeProps })
           <EmptyState title="아직 최근 대화가 없습니다" description="캐릭터나 월드 상세에서 새 대화를 시작해보세요." />
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {items.map((room) => <LinkCard key={room.id} title={room.title} body={room.state.currentSituation} onClick={() => chrome.onNavigate(`/rooms/${room.id}`)} />)}
+            {items.map((room) => (
+              <button key={room.id} type="button" onClick={() => chrome.onNavigate(`/rooms/${room.id}`)} className="w-full rounded-[1.5rem] border border-white/10 bg-white/5 p-4 text-left transition hover:border-white/18 hover:bg-white/7">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${room.world ? 'bg-[#62d0ff]/15 text-[#9de7ff]' : 'bg-[#d98cff]/15 text-[#f0c4ff]'}`}>{room.world ? '월드 결합' : '직접 대화'}</span>
+                  <span className="text-xs text-white/44">{room.character.name}{room.world ? ` · ${room.world.name}` : ''}</span>
+                </div>
+                <p className="mt-3 text-lg font-semibold text-white">{room.title}</p>
+                <p className="mt-2 text-sm font-semibold text-white/70">마지막 장면</p>
+                <p className="mt-1 text-sm leading-6 text-white/62">{room.state.currentSituation}</p>
+              </button>
+            ))}
           </div>
         )}
       </PageSection>
@@ -901,6 +1069,22 @@ export function LibraryPage({ chrome }: { chrome: PlatformPageChromeProps }) {
             {library.recentViews.length === 0 ? <EmptyState title="아직 최근 본 항목이 없습니다" description="상세 페이지를 둘러보면 여기에 쌓입니다." /> : (
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {library.recentViews.map((entry) => <EntityCard key={entry.id} item={entry.item} onClick={() => chrome.onNavigate(entry.entityType === 'character' ? `/characters/${entry.item.slug}` : `/worlds/${entry.item.slug}`)} />)}
+              </div>
+            )}
+          </PageSection>
+
+          <PageSection title="내가 만든 캐릭터">
+            {library.owned.characters.length === 0 ? <EmptyState title="아직 만든 캐릭터가 없습니다" description="캐릭터 만들기에서 첫 캐릭터를 등록해보세요." /> : (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {library.owned.characters.map((item) => <EntityCard key={item.id} item={item} onClick={() => chrome.onNavigate(`/characters/${item.slug}`)} />)}
+              </div>
+            )}
+          </PageSection>
+
+          <PageSection title="내가 만든 월드">
+            {library.owned.worlds.length === 0 ? <EmptyState title="아직 만든 월드가 없습니다" description="월드 만들기에서 첫 월드를 등록해보세요." /> : (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {library.owned.worlds.map((item) => <EntityCard key={item.id} item={item} onClick={() => chrome.onNavigate(`/worlds/${item.slug}`)} />)}
               </div>
             )}
           </PageSection>

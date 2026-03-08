@@ -36,6 +36,7 @@ export interface CharacterSummary extends EntitySummary {
 
 export interface WorldSummary extends EntitySummary {
   entityType: 'world'
+  imageSlots?: CharacterImageSlot[]
 }
 
 export interface CharacterWorldLinkSummary {
@@ -123,6 +124,8 @@ export interface RoomMessage {
     inner_heart: string
     response: string
     narration?: string
+    character_image_slot?: string
+    world_image_slot?: string
   }
 }
 

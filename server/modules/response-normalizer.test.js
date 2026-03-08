@@ -13,12 +13,14 @@ afterEach(() => {
 });
 
 test('normalizeAssistantPayload parses strict json contract', () => {
-  const normalized = normalizeAssistantPayload('{"emotion":"happy","inner_heart":"ok","response":"hello"}');
+  const normalized = normalizeAssistantPayload('{"emotion":"happy","inner_heart":"ok","response":"hello","character_image_slot":"battle","world_image_slot":"night"}');
   assert.deepEqual(normalized, {
     emotion: 'happy',
     inner_heart: 'ok',
     response: 'hello',
     narration: '',
+    character_image_slot: 'battle',
+    world_image_slot: 'night',
   });
 });
 

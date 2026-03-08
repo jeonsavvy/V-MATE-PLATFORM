@@ -69,6 +69,7 @@ const summarizeWorld = (item) => ({
   favoriteCount: item.favoriteCount,
   chatStartCount: item.chatStartCount,
   updatedAt: item.updatedAt,
+  imageSlots: Array.isArray(item.promptProfile?.imageSlots) ? clone(item.promptProfile.imageSlots) : [],
 });
 
 const allCharacters = () => [...seedCharacterMap.values(), ...createdCharacters.values()];

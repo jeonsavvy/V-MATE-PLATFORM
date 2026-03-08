@@ -74,11 +74,14 @@ export const buildRoomPromptSnapshot = ({ character, world, bridgeProfile, state
   const characterPersona = Array.isArray(character.promptProfile.persona) ? character.promptProfile.persona : []
   const characterSpeech = Array.isArray(character.promptProfile.speechStyle) ? character.promptProfile.speechStyle : []
   const characterImageSlots = Array.isArray(character.promptProfile.imageSlots) ? character.promptProfile.imageSlots : []
+  const characterMasterPrompt = typeof character.promptProfile.masterPrompt === 'string' ? character.promptProfile.masterPrompt.trim() : ''
   const lines = [
     '### PLATFORM CONTRACT',
     '- 항상 한국어.',
     '- 감정선은 선명하게, 문장은 지나치게 길지 않게.',
-    '- JSON 객체만 출력: emotion, inner_heart, response, narration(optional).',
+    '- JSON 객체만 출력: emotion, inner_heart, response, narration(optional), character_image_slot(optional), world_image_slot(optional).',
+    '- character_image_slot은 현재 장면에 가장 잘 맞는 캐릭터 이미지 슬롯명이 있을 때만 넣는다.',
+    '- world_image_slot은 현재 장면에 가장 잘 맞는 월드 이미지 슬롯명이 있을 때만 넣는다.',
     '',
     '### CHARACTER',
     `- Name: ${character.name}`,
@@ -88,9 +91,13 @@ export const buildRoomPromptSnapshot = ({ character, world, bridgeProfile, state
     `- Relationship baseline: ${character.promptProfile.relationshipBaseline}`,
   ]
 
+  if (characterMasterPrompt) {
+    lines.push(...characterMasterPrompt.split('\n').map((item) => item.trim()).filter(Boolean).map((item) => `- Master prompt: ${item}`))
+  }
+
   if (characterImageSlots.length > 0) {
     lines.push(
-      ...characterImageSlots.map((slot) => `- Image slot ${slot.slot}: ${slot.trigger || slot.usage || '기본 규칙 없음'}`)
+      ...characterImageSlots.map((slot) => `- Character image slot ${slot.slot}: ${slot.trigger || slot.usage || '기본 규칙 없음'}`)
     )
   }
 
@@ -98,6 +105,8 @@ export const buildRoomPromptSnapshot = ({ character, world, bridgeProfile, state
     const worldRules = Array.isArray(world.promptProfile.rules) ? world.promptProfile.rules : []
     const starterLocations = Array.isArray(world.promptProfile.starterLocations) ? world.promptProfile.starterLocations : []
     const tone = world.promptProfile.tone || (Array.isArray(world.promptProfile.toneKeywords) ? world.promptProfile.toneKeywords.join(', ') : '')
+    const worldImageSlots = Array.isArray(world.promptProfile.imageSlots) ? world.promptProfile.imageSlots : []
+    const worldMasterPrompt = typeof world.promptProfile.masterPrompt === 'string' ? world.promptProfile.masterPrompt.trim() : ''
     lines.push(
       '',
       '### WORLD',
@@ -107,6 +116,16 @@ export const buildRoomPromptSnapshot = ({ character, world, bridgeProfile, state
       `- Tone: ${tone}`,
       `- Starter locations: ${starterLocations.join(', ')}`,
     )
+
+    if (worldMasterPrompt) {
+      lines.push(...worldMasterPrompt.split('\n').map((item) => item.trim()).filter(Boolean).map((item) => `- World master prompt: ${item}`))
+    }
+
+    if (worldImageSlots.length > 0) {
+      lines.push(
+        ...worldImageSlots.map((slot) => `- World image slot ${slot.slot}: ${slot.trigger || slot.usage || '기본 규칙 없음'}`)
+      )
+    }
   }
 
   lines.push(

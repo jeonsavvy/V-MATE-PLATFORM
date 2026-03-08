@@ -18,6 +18,12 @@ export const JSON_RESPONSE_SCHEMA = {
         narration: {
             type: 'STRING',
         },
+        character_image_slot: {
+            type: 'STRING',
+        },
+        world_image_slot: {
+            type: 'STRING',
+        },
     },
     required: ['emotion', 'inner_heart', 'response'],
 };
@@ -41,7 +47,7 @@ const looksLikeBrokenContractJson = (text) => {
         return false;
     }
 
-    const mentionsContractKey = /["']?(emotion|inner_heart|response|narration)["']?\s*:?/i.test(normalized);
+    const mentionsContractKey = /["']?(emotion|inner_heart|response|narration|character_image_slot|world_image_slot)["']?\s*:?/i.test(normalized);
     const startsJsonLike = normalized.startsWith('{') || normalized.startsWith('[');
 
     if (!mentionsContractKey || !startsJsonLike) {
@@ -249,6 +255,12 @@ export const normalizeAssistantPayload = (rawText, logContext = null) => {
     const narration = typeof parsed?.narration === 'string'
         ? parsed.narration.trim()
         : '';
+    const characterImageSlot = typeof parsed?.character_image_slot === 'string'
+        ? parsed.character_image_slot.trim()
+        : '';
+    const worldImageSlot = typeof parsed?.world_image_slot === 'string'
+        ? parsed.world_image_slot.trim()
+        : '';
 
     if (!ALLOWED_EMOTIONS.has(emotion)) {
         logServerWarn('[V-MATE] Invalid emotion value normalized to default', {
@@ -270,6 +282,8 @@ export const normalizeAssistantPayload = (rawText, logContext = null) => {
         inner_heart: innerHeart,
         response,
         narration,
+        ...(characterImageSlot ? { character_image_slot: characterImageSlot } : {}),
+        ...(worldImageSlot ? { world_image_slot: worldImageSlot } : {}),
     };
 };
 

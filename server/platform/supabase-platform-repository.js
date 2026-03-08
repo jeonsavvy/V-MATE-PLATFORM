@@ -108,6 +108,7 @@ const summarizeWorld = (row) => ({
   favoriteCount: Number(row.favorite_count || 0),
   chatStartCount: Number(row.chat_start_count || 0),
   updatedAt: row.updated_at || nowIso(),
+  imageSlots: Array.isArray(row.prompt_profile_json?.imageSlots) ? clone(row.prompt_profile_json.imageSlots) : [],
 });
 
 const basePublicContentQuery = (client, table) => client
