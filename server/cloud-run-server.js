@@ -10,6 +10,7 @@ import { logServerInfo, logServerWarn } from './modules/server-logger.js';
 import { createTraceId } from './modules/trace-id.js';
 import { handlePlatformApi } from './platform/api.js';
 
+// Cloud Run adapter는 Worker와 같은 API 계약을 Node HTTP 서버로 재현한다.
 const DEFAULT_HEADERS = {
     'Content-Type': 'application/json',
     'Cache-Control': 'no-store, max-age=0',
@@ -25,6 +26,7 @@ const normalizeHeaders = (headers) =>
         ])
     );
 
+// Node 스트림에서도 Worker와 같은 body 제한을 먼저 적용한다.
 const readRawBody = (req) =>
     new Promise((resolve, reject) => {
         if (req.method === 'GET' || req.method === 'HEAD') {
@@ -111,6 +113,7 @@ export const createCloudRunServer = ({
     http.createServer(async (req, res) => {
         const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
 
+        // healthz는 배포 환경에서 가장 먼저 확인하는 단순 생존 신호로 유지한다.
         if (url.pathname === '/healthz') {
             res.writeHead(200, DEFAULT_HEADERS);
             res.end(JSON.stringify({ ok: true }));
@@ -151,6 +154,7 @@ export const createCloudRunServer = ({
             const event = await toEvent(req, url);
             let result;
 
+            // chat과 platform 흐름을 나눠야 동일한 가드레일을 유지하면서도 제품 API를 확장하기 쉽다.
             if (isChatPath) {
                 const configuredContext = await resolveChatHandlerContext({
                     chatHandlerContext,

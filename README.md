@@ -1,247 +1,37 @@
 # V-MATE
 
-V-MATE는 **캐릭터 / 월드** 2축으로 구성된 한국형 캐릭터챗 플랫폼입니다.
+V-MATE는 캐릭터와 월드를 조합해 서사형 대화를 운영하는 캐릭터챗 플랫폼입니다.
 
-- 홈에서 캐릭터/월드를 바로 둘러봅니다.
-- 캐릭터 단독 대화 또는 **캐릭터 + 월드** 조합 대화가 가능합니다.
-- 채팅은 메신저형보다 **서사형 플레이 룸** 중심으로 구성됩니다.
-- 캐릭터/월드는 플랫폼 내부에서 생성하고, 운영실에서 노출을 제어합니다.
-
----
-
-## 현재 제품 구조
+## 제품 구조
 
 ### 주요 화면
 - `/` 홈
 - `/characters/:slug` 캐릭터 상세
 - `/worlds/:slug` 월드 상세
+- `/start/character/:slug` 캐릭터 시작 경로
+- `/start/world/:slug` 월드 시작 경로
 - `/rooms/:roomId` 플레이 룸
 - `/create/character` 캐릭터 제작기
 - `/create/world` 월드 제작기
+- `/edit/character/:slug` 캐릭터 수정
+- `/edit/world/:slug` 월드 수정
 - `/recent` 최근 대화
-- `/library` 내 보관함
+- `/library` 보관함
 - `/ops` 운영실
 
-### 주요 개념
-- **캐릭터**: 대화 대상
-- **월드**: 대화 배경/규칙
-- **character_world_links**: 추천 연결/기본 오프닝 문맥
-- **room**: 실제 플레이 세션
+### 핵심 데이터 모델
+- **character**: 대화 대상이 되는 캐릭터
+- **world**: 장면과 규칙을 담는 배경 단위
+- **character_world_links**: 캐릭터와 월드를 연결하는 추천 조합 데이터
+- **room**: 실제 플레이 세션과 메시지 기록 단위
 
----
-
-## 기술 스택
-
-### 프론트엔드
-- React 18
-- TypeScript
-- Vite 7
-- Tailwind CSS
-- motion
-- Supabase Auth / Storage
-
-### 백엔드
-- Cloudflare Worker
-- Cloud Run adapter
-- Supabase
-- Gemini API
-
----
-
-## 빠른 시작
-
-### 0) 런타임 요구사항
-- **Node.js 20 이상**
-- `.nvmrc` 포함 (`nvm use`)
-
-### 1) 설치
-```bash
-npm install
-```
-
-### 2) 필수 환경 변수
-```env
-# Client
-VITE_SUPABASE_URL=...
-VITE_SUPABASE_ANON_KEY=...
-# 또는
-VITE_SUPABASE_PUBLISHABLE_KEY=...
-VITE_CHAT_API_BASE_URL=
-
-# Server
-GOOGLE_API_KEY=...
-```
-
-### 3) 운영에 필요한 추가 값
-```env
-ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://v-mate.jeonsavvy.workers.dev
-ALLOW_ALL_ORIGINS=false
-ALLOW_NON_BROWSER_ORIGIN=false
-
-RATE_LIMIT_STORE=memory
-PROMPT_CACHE_STORE=memory
-V_MATE_RATE_LIMIT_KV=
-V_MATE_PROMPT_CACHE_KV=
-
-REQUIRE_AUTH_FOR_CHAT=true
-AUTH_PROVIDER_TIMEOUT_MS=3500
-AUTH_PROVIDER_RETRY_COUNT=1
-CLIENT_REQUEST_DEDUPE_WINDOW_MS=15000
-CLIENT_REQUEST_DEDUPE_MAX_ENTRIES=2000
-```
-
-### 4) DB 초기화
-Supabase SQL Editor에서 아래 파일을 실행하세요.
-
-```sql
-supabase/schema.sql
-```
-
-### 5) 로컬 실행
-```bash
-npm run dev
-```
-
-### 6) 검증
-```bash
-npm run typecheck
-npm test
-npm run build
-npm run verify
-```
-
----
-
-## 운영실(owner) 설정
-
-운영실은 일반 계정이 아니라 **owner-only** 입니다.
-
-둘 중 하나로 설정하세요.
-
-### 방법 A: profile 플래그
-```sql
-insert into public.profiles (user_id, is_owner)
-values ('YOUR_AUTH_USER_ID', true)
-on conflict (user_id)
-do update set is_owner = true;
-```
-
-### 방법 B: app_settings owner 목록
-```sql
-insert into public.app_settings (key, value_json)
-values ('owner_user_ids', jsonb_build_array('YOUR_AUTH_USER_ID'))
-on conflict (key)
-do update set value_json = excluded.value_json;
-```
-
----
-
-## Supabase Storage / 에셋 전략
-
-### 중요한 점
-이제 캐릭터/월드는 **플랫폼에서 생성**하므로, 운영 중 생성되는 이미지는 로컬 `assets/` 폴더가 아니라 **Supabase Storage**에 저장됩니다.
-
-- Storage bucket: `vmate-assets`
-- 캐릭터 이미지: thumb / card / detail 파생본
-- 월드 이미지: thumb / card / hero 파생본
-
-### 로컬 `assets/` 폴더는 왜 남아 있나?
-로컬 `assets/` 는 아래 용도만 남깁니다.
-- 시드/데모 자산
-- 초기 진입용 기본 이미지
-- 개발 fallback 자산
-
-즉, **운영 데이터용 필수 폴더는 아닙니다.**
-운영에서 유저가 만드는 캐릭터/월드는 Storage를 씁니다.
-
----
-
-## 이미지 정책
-
-### 캐릭터
-- 권장 비율: `3:4`
-- 최소: `768x1024`
-- 파생본: `thumb`, `card`, `detail`
-- 감정/상황별 이미지 슬롯 지원
-  - 예: `main`, `normal`, `happy`, `angry`, `night`, `battle`
-
-### 월드
-- 권장 비율: `16:9`
-- 최소: `1280x720`
-- 파생본: `thumb`, `card`, `hero`
-
-### 업로드 처리
-- 브라우저에서 리사이즈 후 업로드
-- 업로드 원본은 JPG/PNG여도 서비스 전달용은 `WebP` 변환 권장
-- 자동 크롭 적용
-- 원본 비율과 결과 비율을 제작기에서 확인 가능
-
----
-
-## 홈 / 인기 / 배너 기준
-
-### 둘러보기 필터
-- `신작`
-- `인기`
-
-### 인기 정렬 기준
-1. `chat_start_count DESC`
-2. `favorite_count DESC`
-3. `updated_at DESC`
-
-### 메인 배너
-- 기본: `auto`
-  - 실제 이용지표 상위 콘텐츠 자동 노출
-- 운영실에서 `manual` 전환 가능
-  - 특정 캐릭터/월드를 수동 지정
-
----
-
-## CORS / Origin 정책
-
-- 기본적으로 `ALLOWED_ORIGINS` 기반 허용
-- **같은 호스트에서 서빙된 프론트 → API 요청**은 자동 허용
-- 프론트와 API가 서로 다른 도메인/서브도메인이면 반드시 해당 Origin을 `ALLOWED_ORIGINS`에 추가해야 합니다.
-
-예:
-```env
-ALLOWED_ORIGINS=https://your-frontend-domain.com,https://v-mate.jeonsavvy.workers.dev,http://localhost:5173,http://127.0.0.1:5173
-```
-
----
-
-## 왜 환경 변수가 많나?
-
-많아 보이는 이유는 이 저장소가 **플랫폼 기능 + legacy chat 가드레일 + 운영 보안 옵션**을 같이 갖고 있기 때문입니다.
-
-실제로 필수는 적습니다.
-
-### 최소 필수
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY` 또는 `VITE_SUPABASE_PUBLISHABLE_KEY`
-- `GOOGLE_API_KEY`
-
-### 운영 시 자주 보는 값
-- `ALLOWED_ORIGINS`
-- `REQUIRE_AUTH_FOR_CHAT`
-- `RATE_LIMIT_STORE`
-- `PROMPT_CACHE_STORE`
-
-### 고급/튜닝용
-- timeout / rate limit / dedupe / KV 관련 값
-
-즉, **처음부터 전부 만질 필요는 없습니다.**
-
----
-
-## Chat API 계약 (legacy + current backend guardrail)
-
+### 채팅 API 계약
 - 메서드 정책: **`POST`만 허용**
 - **`OPTIONS` preflight 허용**
 - 그 외 메서드는 **`405 METHOD_NOT_ALLOWED`**
 - `Allow: POST, OPTIONS`
 
-### 주요 응답 헤더
+#### 주요 응답 헤더
 - `X-V-MATE-Trace-Id`
 - `X-V-MATE-API-Version`
 - `X-V-MATE-Elapsed-Ms`
@@ -252,60 +42,204 @@ ALLOWED_ORIGINS=https://your-frontend-domain.com,https://v-mate.jeonsavvy.worker
 - `X-V-MATE-RateLimit-Reset`
 - `X-V-MATE-Client-Request-Id`
 - `Retry-After`
-
-보안 헤더:
 - `X-Content-Type-Options: nosniff`
 
-### 주요 에러 코드
+#### 주요 에러 코드
 - `METHOD_NOT_ALLOWED`
 - `ORIGIN_NOT_ALLOWED`
 - `REQUEST_BODY_TOO_LARGE`
 - `UNSUPPORTED_CONTENT_TYPE`
 - `RATE_LIMIT_EXCEEDED`
 
----
+## 핵심 기능
+
+- 홈에서 캐릭터와 월드를 바로 탐색
+- 캐릭터 단독 대화 시작
+- 캐릭터와 월드를 결합한 대화 시작
+- 플레이 룸에서 상태 요약과 메시지 기록 유지
+- 캐릭터/월드 제작 및 수정
+- 최근 대화, 보관함, 즐겨찾기 관리
+- owner 전용 운영실에서 노출 상태와 홈 배너 제어
+- Supabase Storage 기반 이미지 업로드 및 파생본 운영
+
+## 기술 구성
+
+### 프론트엔드
+- React 18
+- TypeScript
+- Vite 7
+- Tailwind CSS
+- motion
+- Supabase Auth
+
+### 백엔드
+- Cloudflare Worker
+- Cloud Run adapter
+- Supabase Database / Storage
+- Gemini API
+
+### 런타임 구성 원칙
+- 브라우저는 same-origin `/api`를 기본값으로 사용합니다.
+- Worker는 `window.__V_MATE_RUNTIME_ENV__`를 HTML에 주입합니다.
+- `wrangler.jsonc`는 `keep_vars: true`와 `run_worker_first`를 사용합니다.
+
+## 빠른 시작
+
+### 1) 런타임 준비
+- **Node.js 20 이상**
+- `.nvmrc` 포함
+
+```bash
+nvm use
+npm install
+```
+
+### 2) 로컬 환경 변수 설정
+```env
+# Client
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+# 또는
+VITE_SUPABASE_PUBLISHABLE_KEY=
+VITE_CHAT_API_BASE_URL=
+
+# Server
+GOOGLE_API_KEY=
+
+# Network / Guardrails
+ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+ALLOW_ALL_ORIGINS=false
+ALLOW_NON_BROWSER_ORIGIN=false
+
+# Runtime stores
+RATE_LIMIT_STORE=memory
+PROMPT_CACHE_STORE=memory
+V_MATE_RATE_LIMIT_KV=
+V_MATE_PROMPT_CACHE_KV=
+
+# Auth / Request policy
+REQUIRE_AUTH_FOR_CHAT=true
+AUTH_PROVIDER_TIMEOUT_MS=3500
+AUTH_PROVIDER_RETRY_COUNT=1
+CLIENT_REQUEST_DEDUPE_WINDOW_MS=15000
+CLIENT_REQUEST_DEDUPE_MAX_ENTRIES=2000
+```
+
+### 3) 로컬 실행
+```bash
+npm run dev
+```
+
+## 환경 변수
+
+### 필수 값
+| 변수 | 설명 |
+| --- | --- |
+| `VITE_SUPABASE_URL` | 브라우저에서 사용할 Supabase 프로젝트 URL |
+| `VITE_SUPABASE_ANON_KEY` 또는 `VITE_SUPABASE_PUBLISHABLE_KEY` | 브라우저 공개 키 |
+| `GOOGLE_API_KEY` | 채팅 생성에 사용하는 Gemini API 키 |
+
+### 교차 출처 / 배포 관련 값
+| 변수 | 설명 |
+| --- | --- |
+| `VITE_CHAT_API_BASE_URL` | 프론트엔드와 API가 다른 출처일 때 사용할 API 기준 URL |
+| `ALLOWED_ORIGINS` | API가 허용할 Origin 목록 |
+| `ALLOW_ALL_ORIGINS` | 모든 Origin 허용 여부 |
+| `ALLOW_NON_BROWSER_ORIGIN` | Origin 없는 요청 허용 여부 |
+
+### 런타임 저장소 관련 값
+| 변수 | 설명 |
+| --- | --- |
+| `RATE_LIMIT_STORE` | rate limit 저장소 모드 (`memory` 또는 KV 기반 확장 모드) |
+| `PROMPT_CACHE_STORE` | prompt cache 저장소 모드 |
+| `V_MATE_RATE_LIMIT_KV` | Cloudflare KV rate limit binding 이름 |
+| `V_MATE_PROMPT_CACHE_KV` | Cloudflare KV prompt cache binding 이름 |
+
+### 기본 운영 원칙
+- 저장소 기본값의 `ALLOWED_ORIGINS`는 로컬 개발 Origin만 포함합니다.
+- 운영 Origin은 Cloudflare dashboard vars에서 설정합니다.
+- 교차 출처 배포에서는 `VITE_CHAT_API_BASE_URL`과 `ALLOWED_ORIGINS`를 함께 맞춰야 합니다.
+
+## 데이터베이스 초기화
+
+Supabase SQL Editor에서 아래 파일을 실행합니다.
+
+```sql
+supabase/schema.sql
+```
+
+초기화가 끝나면 다음 리소스가 준비됩니다.
+- 프로필 / owner 판정 함수
+- 캐릭터 / 월드 / 링크 / 룸 테이블
+- 최근 본 항목 / 즐겨찾기
+- `vmate-assets` Storage bucket
+- 운영 기본 설정(`owner_user_ids`, `home.hero`)
+
+## 운영실 권한 설정
+
+운영실은 owner 계정만 접근할 수 있습니다.
+
+### 방법 A: `profiles.is_owner` 사용
+```sql
+insert into public.profiles (user_id, is_owner)
+values ('YOUR_AUTH_USER_ID', true)
+on conflict (user_id)
+do update set is_owner = true;
+```
+
+### 방법 B: `app_settings.owner_user_ids` 사용
+```sql
+insert into public.app_settings (key, value_json)
+values ('owner_user_ids', jsonb_build_array('YOUR_AUTH_USER_ID'))
+on conflict (key)
+do update set value_json = excluded.value_json;
+```
 
 ## 배포
 
-### Worker 자동 배포
-- GitHub Actions에서 **main branch push** 시 배포됩니다.
-- 배포에는 아래 secret/설정이 필요합니다.
+### Cloudflare Worker 배포
+- GitHub Actions에서 **main branch push** 이후 품질 검증이 끝나면 Worker를 배포합니다.
+- GitHub Actions variable `PRODUCTION_APP_URL`이 필요합니다.
+- GitHub Secrets는 아래 값이 필요합니다.
   - `CLOUDFLARE_API_TOKEN`
   - `CLOUDFLARE_ACCOUNT_ID`
+- 런타임 환경 변수는 Cloudflare dashboard vars 또는 secrets에서 관리합니다.
   - `VITE_SUPABASE_URL`
   - `VITE_SUPABASE_ANON_KEY` 또는 `VITE_SUPABASE_PUBLISHABLE_KEY`
   - `VITE_CHAT_API_BASE_URL`
 
-### Cloudflare / Wrangler
-- `wrangler.jsonc` 는 `keep_vars: true`
-- shell route는 `run_worker_first` 사용
-- runtime env는 `window.__V_MATE_RUNTIME_ENV__` 로 주입
+### 배포 체크 포인트
+- `PRODUCTION_APP_URL`은 최종 서비스 주소로 설정합니다. 예: `https://your-app.example.com`
+- smoke check는 `PRODUCTION_APP_URL` 기준으로 홈 응답과 chat auth guard를 확인합니다.
+- 저장소의 `wrangler.jsonc` 기본값은 로컬 개발 기준입니다.
+- 운영 Origin 허용은 Cloudflare dashboard vars의 `ALLOWED_ORIGINS`에서 관리합니다.
 
 ### 롤백
-문제 생기면:
 ```bash
 wrangler rollback
 ```
 
----
+## 검증
 
-## 운영 체크리스트
+### 자동 검증
+```bash
+npm run typecheck
+npm test
+npm run build
+npm run verify
+```
 
-1. migration 실행
-2. owner 계정 설정
-3. `ALLOWED_ORIGINS` 확인
-4. 홈 `/` 확인
-5. 캐릭터 생성 확인
-6. 월드 생성 확인
-7. 이미지 업로드 확인
+### 수동 점검
+1. 홈 `/` 진입 확인
+2. 캐릭터 상세 진입 확인
+3. 월드 상세 진입 확인
+4. 캐릭터 생성 화면 진입 확인
+5. 월드 생성 화면 진입 확인
+6. 로그인 다이얼로그 표시 확인
+7. 운영실 배너/노출 제어 확인
 8. 캐릭터 단독 대화 확인
 9. 캐릭터 + 월드 대화 확인
-10. 운영실 hide/show/delete 확인
 
----
+## 라이선스
 
-## 남아 있는 주의점
-
-- 외부 URL 이미지 삭제는 원격 원본까지 삭제되지 않습니다.
-- Supabase migration 미적용 상태에서는 ops / owner / storage 흐름이 정상 동작하지 않습니다.
-- cross-origin 구조면 same-host 예외만으로는 해결되지 않으므로 `ALLOWED_ORIGINS` 설정이 필요합니다.
+MIT

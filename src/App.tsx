@@ -5,6 +5,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { devError } from '@/lib/logger'
 import { getStoredKeys } from '@/lib/browserStorage'
 
+// 외부 라우터 없이 pathname 기반 상태 머신과 lazy page 분할을 같이 관리한다.
 const Home = lazy(() => import('@/components/Home').then((module) => ({ default: module.Home })))
 const AuthDialog = lazy(() => import('@/components/AuthDialog').then((module) => ({ default: module.AuthDialog })))
 const CharacterDetailPage = lazy(() => import('@/components/platform/Pages').then((module) => ({ default: module.CharacterDetailPage })))
@@ -38,6 +39,7 @@ const normalizePathname = (pathname: string) => {
   return pathname.endsWith('/') ? pathname.slice(0, -1) : pathname
 }
 
+// 화면 구조가 route 타입 하나에 모이도록 URL 해석과 URL 생성 규칙을 같은 파일에서 유지한다.
 const parseRouteFromPathname = (pathname: string): RouteState => {
   const normalizedPath = normalizePathname(pathname)
   const segments = normalizedPath.split('/').filter(Boolean)
@@ -140,6 +142,7 @@ function App() {
 
     let mounted = true
     let unsubscribe: (() => void) | null = null
+    // 세션 흔적이 있는 경우에만 Supabase를 지연 초기화해 첫 진입 비용을 줄인다.
     const bindAuthListener = async () => {
       const module = await import('@/lib/supabase')
       if (!module.isSupabaseConfigured()) {

@@ -41,7 +41,7 @@ jobs:
       cancel-in-progress: false
     environment:
       name: production
-      url: https://v-mate.jeonsavvy.workers.dev
+      url: ${{ vars.PRODUCTION_APP_URL }}
 
     steps:
       - name: Checkout
@@ -56,11 +56,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Validate required Cloudflare secrets
+      - name: Validate deploy configuration
         env:
+          PRODUCTION_APP_URL: ${{ vars.PRODUCTION_APP_URL }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
+          if [ -z "$PRODUCTION_APP_URL" ]; then
+            echo "::error::Missing required GitHub Actions variable: PRODUCTION_APP_URL"
+            exit 1
+          fi
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
             echo "::error::Missing required GitHub secret: CLOUDFLARE_API_TOKEN"
             exit 1
@@ -77,7 +82,10 @@ jobs:
         run: npm run cf:deploy
 
       - name: Smoke check homepage
+        env:
+          PRODUCTION_APP_URL: ${{ vars.PRODUCTION_APP_URL }}
         run: |
+          base_url="${PRODUCTION_APP_URL%/}"
           html=$(curl --fail --silent --show-error \
             --connect-timeout 10 \
             --max-time 20 \
@@ -85,7 +93,7 @@ jobs:
             --retry-delay 2 \
             --retry-all-errors \
             --header 'Accept: */*' \
-            https://v-mate.jeonsavvy.workers.dev/)
+            "$base_url/")
 
           if ! printf '%s' "$html" | grep -q 'window.__V_MATE_RUNTIME_ENV__'; then
             echo '::error::Homepage smoke check failed: expected runtime env script in HTML response'
@@ -93,7 +101,10 @@ jobs:
           fi
 
       - name: Smoke check chat auth guard
+        env:
+          PRODUCTION_APP_URL: ${{ vars.PRODUCTION_APP_URL }}
         run: |
+          base_url="${PRODUCTION_APP_URL%/}"
           response_file=$(mktemp)
           status=$(curl --silent --show-error \
             --output "$response_file" \
@@ -102,10 +113,10 @@ jobs:
             --max-time 20 \
             --retry 0 \
             -X POST \
-            -H 'Origin: https://v-mate.jeonsavvy.workers.dev' \
+            -H "Origin: $base_url" \
             -H 'Content-Type: application/json' \
             --data '{"characterId":"mika","userMessage":"안녕","messageHistory":[]}' \
-            https://v-mate.jeonsavvy.workers.dev/api/chat)
+            "$base_url/api/chat")
 
           if [ "$status" != '401' ]; then
             echo "::error::Chat smoke check failed: expected HTTP 401, got $status"

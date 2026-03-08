@@ -87,7 +87,7 @@ test('allows same-host origin for platform api even when not explicitly allowlis
   });
 
   const response = await worker.fetch(request, {
-    ALLOWED_ORIGINS: 'https://v-mate.jeonsavvy.workers.dev',
+    ALLOWED_ORIGINS: 'https://app.example.com',
     ALLOW_ALL_ORIGINS: 'false',
     ALLOW_NON_BROWSER_ORIGIN: 'false',
   });

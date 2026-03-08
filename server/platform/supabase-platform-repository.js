@@ -3,6 +3,7 @@ import { extractBearerToken } from '../modules/auth-guard.js';
 import { logServerWarn } from '../modules/server-logger.js';
 import { buildRoomPromptSnapshot, createInitialRoomState, generateBridgeProfile, updateRoomStateFromMessages } from './prompt-builder.js';
 
+// Supabase persistence adapter는 platform API가 기대하는 동일한 메서드 집합을 DB/Storage 기반으로 구현한다.
 const STORAGE_BUCKET = process.env.PUBLIC_ASSETS_BUCKET || 'vmate-assets';
 
 const resolveSupabaseConfig = () => {
@@ -40,6 +41,7 @@ const getCreateClient = async () => {
   return createClientPromise;
 };
 
+// 공개 조회와 사용자 권한 조회를 분리해 RLS 경계를 명확히 유지한다.
 const createSupabaseClient = async ({ accessToken = '', asUser = false } = {}) => {
   const { supabaseUrl, supabaseAnonKey, configured } = resolveSupabaseConfig();
   if (!configured) return null;
@@ -152,6 +154,7 @@ const getSetting = async (client, key) => {
   return data?.value_json || null;
 };
 
+// public URL만 저장된 자산도 bucket 내부 경로를 역산해 정리할 수 있게 유지한다.
 const resolveStoragePathFromPublicUrl = (url) => {
   try {
     const parsed = new URL(String(url || ''));
@@ -195,6 +198,7 @@ const resolveEntityByTargetPath = ({ targetPath, characters, worlds }) => {
   return null;
 };
 
+// 카운터 증분은 실패하더라도 방 생성 자체를 막지 않도록 best-effort로 처리한다.
 export const incrementChatStartCountsBestEffort = async ({ client, character, world }) => {
   const operations = [
     {

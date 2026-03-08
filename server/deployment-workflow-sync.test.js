@@ -18,7 +18,8 @@ test('github ci workflow deploys worker only after quality succeeds on main push
   assert.match(workflow, /github\.event_name\s*==\s*'push'/);
   assert.match(workflow, /github\.ref\s*==\s*'refs\/heads\/main'/);
   assert.match(workflow, /environment:\s*\n\s*name:\s*production/);
-  assert.match(workflow, /https:\/\/v-mate\.jeonsavvy\.workers\.dev/);
+  assert.match(workflow, /url:\s*\$\{\{\s*vars\.PRODUCTION_APP_URL\s*\}\}/);
+  assert.match(workflow, /PRODUCTION_APP_URL/);
   assert.match(workflow, /concurrency:/);
   assert.match(workflow, /group:\s*production-worker/);
   assert.match(workflow, /npm run cf:deploy/);
@@ -48,6 +49,7 @@ test('README documents worker auto-deploy, required secrets, runtime prerequisit
   const readme = await readUtf8('README.md');
 
   assert.match(readme, /main.*push/i);
+  assert.match(readme, /PRODUCTION_APP_URL/);
   assert.match(readme, /CLOUDFLARE_API_TOKEN/);
   assert.match(readme, /CLOUDFLARE_ACCOUNT_ID/);
   assert.match(readme, /VITE_SUPABASE_URL/);

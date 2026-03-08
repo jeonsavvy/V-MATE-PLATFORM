@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { devError } from "@/lib/logger"
 
+// 브라우저 번들에서는 공개 키만 허용하고, 실제 클라이언트 생성도 필요할 때까지 지연한다.
 const runtimeEnv = (globalThis as { __V_MATE_RUNTIME_ENV__?: Record<string, string | undefined> })
   .__V_MATE_RUNTIME_ENV__ ?? {}
 
@@ -110,6 +111,7 @@ export const isSupabaseConfigured = () => {
     !supabaseKeyIsSecret)
 }
 
+// 동적 import를 유지해 초기 번들에서 Supabase SDK를 바로 끌어오지 않도록 한다.
 export const resolveSupabaseClient = async (): Promise<SupabaseClient | null> => {
   if (!isSupabaseConfigured()) {
     warnSecretKeyMisconfiguration()

@@ -7,6 +7,7 @@ import { resolveRuntimeChatHandlerContext } from "./server/modules/runtime-chat-
 import { createTraceId } from "./server/modules/trace-id.js";
 import { handlePlatformApi } from "./server/platform/api.js";
 
+// Worker는 정적 셸 응답에 runtime env를 주입하고, chat API와 platform API를 분기한다.
 const CHAT_API_PATH = "/api/chat";
 const CLIENT_RUNTIME_ENV_KEYS = [
   "VITE_SUPABASE_URL",
@@ -30,6 +31,7 @@ const createRequestBodyTooLargeError = (maxBodyBytes) => {
   return error;
 };
 
+// Wrangler vars를 Node 기반 모듈도 같은 방식으로 읽을 수 있게 process.env에 동기화한다.
 const syncWorkerEnvToProcessEnv = (env) => {
   if (typeof process === "undefined" || typeof process.env === "undefined") {
     return;
@@ -42,6 +44,7 @@ const syncWorkerEnvToProcessEnv = (env) => {
   }
 };
 
+// Worker 레벨에서 body 크기를 먼저 제한해 upstream 호출 전에 실패를 확정한다.
 const readRequestBodyWithLimit = async (request, maxBodyBytes) => {
   if (request.method === "GET" || request.method === "HEAD") {
     return "";
@@ -127,6 +130,7 @@ const toWorkerResponse = (result, fallbackHeaders) =>
     headers: mergeResponseHeaders(fallbackHeaders, result?.headers),
   });
 
+// /api/chat은 공통 CORS/trace 처리 뒤에 chat handler context를 합성해서 전달한다.
 const handleChatApi = async (request, env, chatHandlerImpl, chatHandlerContext) => {
   syncWorkerEnvToProcessEnv(env);
   const requestStartedAt = Date.now();
@@ -195,6 +199,7 @@ const handleChatApi = async (request, env, chatHandlerImpl, chatHandlerContext) 
   }
 };
 
+// /api/* 플랫폼 라우트는 별도 핸들러로 넘겨 CRUD와 플레이 흐름을 분리한다.
 const handlePlatformApiRequest = async (request, env) => {
   syncWorkerEnvToProcessEnv(env);
   const requestStartedAt = Date.now();
@@ -265,6 +270,7 @@ const isHtmlRequest = (request) => {
   return accept.includes("text/html");
 };
 
+// 클라이언트가 알아야 하는 공개 환경 변수만 HTML에 주입한다.
 const buildClientRuntimeEnv = (env) => {
   const runtimeEnv = {};
 

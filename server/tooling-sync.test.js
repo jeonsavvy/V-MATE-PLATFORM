@@ -82,3 +82,12 @@ test('server source no longer references legacy local demo asset filenames', asy
   assert.equal(joined.includes('/world_tokyo.svg'), false);
   assert.equal(joined.includes('/world_sao.svg'), false);
 });
+
+test('unused form helpers and direct dependencies are removed from the repo', async () => {
+  const packageJson = JSON.parse(await readUtf8('package.json'));
+
+  await assert.rejects(readUtf8('src/components/ui/dropdown-menu.tsx'));
+  await assert.rejects(readUtf8('src/components/ui/form.tsx'));
+  assert.equal(packageJson?.dependencies?.['@radix-ui/react-dropdown-menu'], undefined);
+  assert.equal(packageJson?.dependencies?.['react-hook-form'], undefined);
+});

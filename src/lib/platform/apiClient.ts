@@ -14,6 +14,7 @@ import type {
 } from '@/lib/platform/types'
 import { getBrowserOrigin } from '@/lib/browserRuntime'
 
+// 브라우저에서는 same-origin /api를 우선 사용하고, 교차 출처 설정은 명시적으로만 허용한다.
 const resolveRuntimeEnv = () =>
   ((globalThis as { __V_MATE_RUNTIME_ENV__?: Record<string, string | undefined> }).__V_MATE_RUNTIME_ENV__ ?? {})
 
@@ -48,6 +49,7 @@ const resolveApiBaseUrl = () => {
   return normalizeConfigured(configured)
 }
 
+// 인증이 필요한 요청만 지연 토큰 조회를 수행해 비로그인 탐색 흐름을 가볍게 유지한다.
 const resolveAccessToken = async () => {
   const supabaseModule = await import('@/lib/supabase')
   if (!supabaseModule.isSupabaseConfigured()) {

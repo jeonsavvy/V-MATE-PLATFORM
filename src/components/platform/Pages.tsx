@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { ArtworkFrame, EmptyState, EntityCard, LinkCard, PageSection, PlatformShell } from '@/components/platform/PlatformScaffold'
 import type { PlatformPageChromeProps } from '@/components/platform/pageTypes'
 
+// 상세, 시작, 대화, 제작, 운영 화면을 한 파일에 두고 공통 흐름을 재사용한다.
 const PageFrame = ({ chrome, children }: { chrome: PlatformPageChromeProps; children: ReactNode }) => (
   <PlatformShell
     user={chrome.user}
@@ -96,6 +97,7 @@ const AliasDialog = ({
   )
 }
 
+// 상세 화면은 공개 조회와 새 방 진입을 함께 책임진다.
 export function CharacterDetailPage({ chrome, slug }: { chrome: PlatformPageChromeProps; slug: string }) {
   const [item, setItem] = useState<CharacterDetail | null>(null)
   const [links, setLinks] = useState<CharacterWorldLinkSummary[]>([])
@@ -200,6 +202,7 @@ export function CharacterDetailPage({ chrome, slug }: { chrome: PlatformPageChro
   )
 }
 
+// 월드 상세는 월드 정보와 함께 진입 가능한 캐릭터 선택을 같은 맥락에서 제공한다.
 export function WorldDetailPage({ chrome, slug }: { chrome: PlatformPageChromeProps; slug: string }) {
   const [item, setItem] = useState<WorldDetail | null>(null)
   const [availableCharacters, setAvailableCharacters] = useState<CharacterSummary[]>([])
@@ -312,6 +315,7 @@ const NarrativeMessage = ({ message }: { message: RoomSummary['messages'][number
   )
 }
 
+// 시작 URL은 상세 화면으로 정규화해 링크 형태만 다르고 핵심 경험은 하나로 유지한다.
 export function StartCharacterPage({ chrome, slug }: { chrome: PlatformPageChromeProps; slug: string }) {
   useEffect(() => {
     chrome.onNavigate(`/characters/${slug}`)
@@ -326,6 +330,7 @@ export function StartWorldPage({ chrome, slug }: { chrome: PlatformPageChromePro
   return <PageFrame chrome={chrome}><EmptyState title="월드 상세로 이동하는 중" description="잠시만 기다려주세요." /></PageFrame>
 }
 
+// 플레이 룸은 메시지, 상태 요약, 이미지 슬롯 반영을 같은 세션 모델로 묶는다.
 export function RoomPage({ chrome, roomId }: { chrome: PlatformPageChromeProps; roomId: string }) {
   const [room, setRoom] = useState<RoomSummary | null>(null)
   const [input, setInput] = useState('')
@@ -735,6 +740,7 @@ const SituationImageSlotsEditor = ({
 
 const selectStyle = { colorScheme: 'dark' as const }
 
+// 제작 화면은 업로드 준비, 폼 입력, 저장 호출을 한 방향 흐름으로 고정한다.
 export function CreateCharacterPage({ chrome, slug }: { chrome: PlatformPageChromeProps; slug?: string }) {
   const [name, setName] = useState('')
   const [headline, setHeadline] = useState('')
@@ -1124,6 +1130,7 @@ export function CreateWorldPage({ chrome, slug }: { chrome: PlatformPageChromePr
   )
 }
 
+// 개인 기록 화면은 재진입이 잦은 데이터만 빠르게 보여주도록 분리한다.
 export function RecentRoomsPage({ chrome }: { chrome: PlatformPageChromeProps }) {
   const [items, setItems] = useState<RoomSummary[]>([])
 
@@ -1224,6 +1231,7 @@ export function LibraryPage({ chrome }: { chrome: PlatformPageChromeProps }) {
   )
 }
 
+// 운영 화면은 owner 전용 노출 제어와 홈 배너 제어만 다룬다.
 export function OpsPage({ chrome }: { chrome: PlatformPageChromeProps }) {
   const [dashboard, setDashboard] = useState<OwnerOpsDashboard | null>(null)
   const [isForbidden, setIsForbidden] = useState(false)

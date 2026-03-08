@@ -28,7 +28,7 @@
     "GEMINI_CONTEXT_CACHE_CREATE_TIMEOUT_MS": "1800",
     "GEMINI_CONTEXT_CACHE_WARMUP_MIN_CHARS": "1200",
     "GEMINI_CONTEXT_CACHE_AUTO_CREATE": "true",
-    "ALLOWED_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173,https://v-mate.jeonsavvy.workers.dev",
+    "ALLOWED_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173",
     "ALLOW_ALL_ORIGINS": "false",
     "ALLOW_NON_BROWSER_ORIGIN": "false",
     "REQUEST_BODY_MAX_BYTES": "32768",

@@ -6,8 +6,10 @@ import { normalizeAssistantPayload } from '../modules/response-normalizer.js';
 import * as memoryStore from './content-store.js';
 import * as persistentStore from './supabase-platform-repository.js';
 
+// 플랫폼 라우터는 public read, authenticated write, owner ops를 하나의 계약으로 묶는다.
 const PLATFORM_ALLOWED_METHODS = 'GET, POST, PATCH, DELETE, OPTIONS';
 
+// Supabase가 준비되면 persistent store를, 아니면 memory store를 선택해 같은 API를 유지한다.
 const getPlatformStore = () => (persistentStore.isPersistentPlatformAvailable() ? persistentStore : memoryStore);
 
 const withPlatformHeaders = (headers) => ({
@@ -93,6 +95,7 @@ const normalizeLinkPayload = (payload) => ({
   isRecommended: payload.isRecommended !== false,
 });
 
+// 룸 채팅은 room 존재 확인, auth, 모델 호출, 메시지 정규화를 한 트랜잭션 흐름처럼 다룬다.
 const handleRoomChat = async ({ event, headers, startedAtMs, traceId, roomId }) => {
   const authResult = await resolveOptionalUser({ event, traceId, requireAuth: persistentStore.isPersistentPlatformAvailable() });
   if (!authResult.ok) {
@@ -170,6 +173,7 @@ export const handlePlatformApi = async ({ event, headers, startedAtMs, traceId }
     return jsonError({ statusCode: 404, headers, startedAtMs, traceId, error: 'Not found.', errorCode: 'NOT_FOUND' });
   }
 
+  // 공개 탐색 라우트
   if (method === 'GET' && segments[1] === 'home') {
     const query = parseQuery(event.queryStringParameters);
     return jsonOk({ headers, startedAtMs, body: await getPlatformStore().getHomePayload({ tab: query.tab, search: query.search, filter: query.filter }) });
@@ -217,6 +221,7 @@ export const handlePlatformApi = async ({ event, headers, startedAtMs, traceId }
     return jsonOk({ headers, startedAtMs, body: await getPlatformStore().getLibraryPayload({ event, userId: authResult.userId }) });
   }
 
+  // 로그인 사용자 데이터 라우트
   if (method === 'POST' && segments[1] === 'recent-views') {
     const authResult = await resolveOptionalUser({ event, traceId, requireAuth: persistentStore.isPersistentPlatformAvailable() });
     if (!authResult.ok) return jsonError({ statusCode: authResult.statusCode || 401, headers, startedAtMs, traceId, error: authResult.error || 'Authentication required.', errorCode: authResult.errorCode || 'AUTH_REQUIRED', retryable: Boolean(authResult.retryable) });
@@ -243,6 +248,7 @@ export const handlePlatformApi = async ({ event, headers, startedAtMs, traceId }
     return jsonOk({ headers, startedAtMs, body: { ok: true } });
   }
 
+  // 제작 및 편집 라우트
   if (method === 'POST' && segments[1] === 'characters') {
     const authResult = await resolveOptionalUser({ event, traceId, requireAuth: persistentStore.isPersistentPlatformAvailable() });
     if (!authResult.ok) return jsonError({ statusCode: authResult.statusCode || 401, headers, startedAtMs, traceId, error: authResult.error || 'Authentication required.', errorCode: authResult.errorCode || 'AUTH_REQUIRED', retryable: Boolean(authResult.retryable) });
@@ -328,6 +334,7 @@ export const handlePlatformApi = async ({ event, headers, startedAtMs, traceId }
     return handleRoomChat({ event, headers, startedAtMs, traceId, roomId: segments[2] });
   }
 
+  // owner 전용 운영 라우트
   if (method === 'GET' && segments[1] === 'ops' && segments[2] === 'dashboard') {
     const authResult = await resolveOptionalUser({ event, traceId, requireAuth: persistentStore.isPersistentPlatformAvailable() });
     if (!authResult.ok) return jsonError({ statusCode: authResult.statusCode || 401, headers, startedAtMs, traceId, error: authResult.error || 'Authentication required.', errorCode: authResult.errorCode || 'AUTH_REQUIRED', retryable: Boolean(authResult.retryable) });
