@@ -20,6 +20,8 @@ test('github ci workflow deploys worker only after quality succeeds on main push
   assert.match(workflow, /environment:\s*\n\s*name:\s*production/);
   assert.match(workflow, /url:\s*\$\{\{\s*vars\.PRODUCTION_APP_URL\s*\}\}/);
   assert.match(workflow, /PRODUCTION_APP_URL/);
+  assert.match(workflow, /Skipping post-deploy smoke checks/);
+  assert.match(workflow, /vars\.PRODUCTION_APP_URL != ''/);
   assert.match(workflow, /concurrency:/);
   assert.match(workflow, /group:\s*production-worker/);
   assert.match(workflow, /npm run cf:deploy/);
@@ -45,7 +47,7 @@ test('wrangler config runs worker first for shell routes that need runtime env i
   assert.match(wranglerConfig, /"\/chat\/\*"/);
 });
 
-test('README documents worker auto-deploy, required secrets, runtime prerequisites, and rollback', async () => {
+test('README documents worker auto-deploy, optional smoke-check url, runtime prerequisites, and rollback', async () => {
   const readme = await readUtf8('README.md');
 
   assert.match(readme, /main.*push/i);

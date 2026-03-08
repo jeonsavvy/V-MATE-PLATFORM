@@ -58,14 +58,9 @@ jobs:
 
       - name: Validate deploy configuration
         env:
-          PRODUCTION_APP_URL: ${{ vars.PRODUCTION_APP_URL }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          if [ -z "$PRODUCTION_APP_URL" ]; then
-            echo "::error::Missing required GitHub Actions variable: PRODUCTION_APP_URL"
-            exit 1
-          fi
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
             echo "::error::Missing required GitHub secret: CLOUDFLARE_API_TOKEN"
             exit 1
@@ -81,7 +76,12 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npm run cf:deploy
 
+      - name: Skip smoke checks when PRODUCTION_APP_URL is not set
+        if: ${{ vars.PRODUCTION_APP_URL == '' }}
+        run: echo "::warning::Skipping post-deploy smoke checks because PRODUCTION_APP_URL is not configured."
+
       - name: Smoke check homepage
+        if: ${{ vars.PRODUCTION_APP_URL != '' }}
         env:
           PRODUCTION_APP_URL: ${{ vars.PRODUCTION_APP_URL }}
         run: |
@@ -101,6 +101,7 @@ jobs:
           fi
 
       - name: Smoke check chat auth guard
+        if: ${{ vars.PRODUCTION_APP_URL != '' }}
         env:
           PRODUCTION_APP_URL: ${{ vars.PRODUCTION_APP_URL }}
         run: |

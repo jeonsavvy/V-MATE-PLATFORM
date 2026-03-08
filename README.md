@@ -50,6 +50,48 @@ V-MATE의 조합은 두 데이터를 단순히 이어 붙이는 방식이 아닙
 - 특정 조합 링크가 없어도 월드 자체의 장르/톤/시작 장면 정보를 사용해 방을 만들 수 있습니다.
 - 그래서 같은 캐릭터라도 월드가 바뀌면 첫 장면과 목표가 달라지고, 같은 월드라도 캐릭터가 바뀌면 반응 톤과 관계감이 달라집니다.
 
+### 실제로 어떻게 연결되는지 예시
+아래 예시는 리포의 현재 로직을 설명하기 위한 예시입니다.
+
+#### 예시 1: 조합 링크가 없는 경우
+- 캐릭터: 차갑지만 책임감이 강한 캐릭터
+- 월드: 비가 막 그친 심야 도시
+- `character_world_links`: 없음
+
+이 경우 서버는 먼저 캐릭터의 기본 관계 거리와 월드의 톤, 시작 장소, 장르값을 읽습니다.  
+그 다음 기본 브리지를 만듭니다.
+
+- `entryMode`: `in_world`
+- `characterRoleInWorld`: 이 월드에 익숙한 인물
+- `userRoleInWorld`: 같은 장면을 공유하는 상대
+- `meetingTrigger`: 월드 소개나 기본 도시 장면 fallback
+- `relationshipDistance`: 캐릭터의 기본 관계 거리
+- `startingLocation`: 월드의 첫 시작 장소 또는 월드 이름
+
+이렇게 만든 브리지에 캐릭터 규칙과 월드 규칙을 합쳐 방 전용 시작 스냅샷을 만든 뒤 Gemini에 전달합니다.  
+즉, “둘을 일단 억지로 붙여놓고 모델이 알아서 수습하는 구조”가 아니라, **먼저 장면의 뼈대를 만들고 그 위에서 응답을 생성하는 구조**입니다.
+
+#### 예시 2: 조합 링크가 있는 경우
+- 캐릭터: 전투에 익숙한 파티 멤버
+- 월드: 레이드 직전 대기실
+- `character_world_links.defaultOpeningContext`: `레이드 시작 직전, 마지막 점검을 하고 있다.`
+- `character_world_links.defaultRelationshipContext`: `이미 호흡을 여러 번 맞춘 동료`
+
+이 경우 월드 기본값보다 조합 링크가 우선합니다.
+
+- 첫 장면은 `defaultOpeningContext`로 고정됩니다.
+- 관계 거리는 `defaultRelationshipContext`로 고정됩니다.
+- 모델은 이 시작 조건을 전제로 대사를 이어갑니다.
+
+결과적으로 V-MATE의 조합은 아래 순서로 정리할 수 있습니다.
+
+1. 캐릭터 규칙을 읽음
+2. 월드 규칙을 읽음
+3. 조합 링크가 있으면 우선 반영
+4. 브리지 정보를 생성
+5. 방 전용 시작 스냅샷 생성
+6. 그 스냅샷을 기준으로 Gemini가 응답 생성
+
 ### 채팅 API 계약
 - 메서드 정책: **`POST`만 허용**
 - **`OPTIONS` preflight 허용**
@@ -224,7 +266,6 @@ do update set value_json = excluded.value_json;
 
 ### Cloudflare Worker 배포
 - GitHub Actions에서 **main branch push** 이후 품질 검증이 끝나면 Worker를 배포합니다.
-- GitHub Actions variable `PRODUCTION_APP_URL`이 필요합니다.
 - GitHub Secrets는 아래 값이 필요합니다.
   - `CLOUDFLARE_API_TOKEN`
   - `CLOUDFLARE_ACCOUNT_ID`
@@ -234,7 +275,9 @@ do update set value_json = excluded.value_json;
   - `VITE_CHAT_API_BASE_URL`
 
 ### 배포 체크 포인트
-- `PRODUCTION_APP_URL`은 최종 서비스 주소로 설정합니다. 예: `https://your-app.example.com`
+- `PRODUCTION_APP_URL`은 선택값입니다. 설정하면 post-deploy smoke check가 실행됩니다.
+- `PRODUCTION_APP_URL` 예시: `https://your-app.example.com`
+- `PRODUCTION_APP_URL`이 없으면 Worker 배포는 진행하고 smoke check만 건너뜁니다.
 - smoke check는 `PRODUCTION_APP_URL` 기준으로 홈 응답과 chat auth guard를 확인합니다.
 - 저장소의 `wrangler.jsonc` 기본값은 로컬 개발 기준입니다.
 - 운영 Origin 허용은 Cloudflare dashboard vars의 `ALLOWED_ORIGINS`에서 관리합니다.
