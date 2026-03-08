@@ -8,7 +8,7 @@ import { CHARACTER_VARIANTS, createImageVariants, type ResizedImageAsset, WORLD_
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { EmptyState, EntityCard, LinkCard, PageSection, PlatformShell } from '@/components/platform/PlatformScaffold'
+import { ArtworkFrame, EmptyState, EntityCard, LinkCard, PageSection, PlatformShell } from '@/components/platform/PlatformScaffold'
 import type { PlatformPageChromeProps } from '@/components/platform/pageTypes'
 
 const PageFrame = ({ chrome, children }: { chrome: PlatformPageChromeProps; children: ReactNode }) => (
@@ -165,9 +165,7 @@ export function CharacterDetailPage({ chrome, slug }: { chrome: PlatformPageChro
       />
       <AliasDialog open={aliasOpen} initialValue={String(chrome.user?.user_metadata?.name || '')} onConfirm={(value) => { setAliasOpen(false); startRoom(pendingWorldSlug ?? null, value) }} />
       <div className="grid gap-6 xl:grid-cols-[0.84fr_1.16fr]">
-        <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#121418] xl:max-h-[720px]">
-          <img src={item.coverImageUrl} alt={item.name} className="h-full w-full object-contain p-4" loading="eager" decoding="async" />
-        </div>
+        <ArtworkFrame src={item.coverImageUrl} alt={item.name} aspectClassName="aspect-[3/4] xl:max-h-[720px]" priority />
         <div className="space-y-6 rounded-[2rem] border border-white/10 bg-[#20242b] p-6">
           <div>
             <p className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-white/42">캐릭터</p>
@@ -183,9 +181,7 @@ export function CharacterDetailPage({ chrome, slug }: { chrome: PlatformPageChro
             <div className="flex flex-wrap gap-3">
               {item.imageSlots.slice(0, 6).map((slot) => (
                 <div key={slot.id} className="w-[84px]">
-                  <div className="overflow-hidden rounded-[1rem] border border-white/10 bg-[#121418]">
-                    <img src={slot.cardUrl || slot.detailUrl || item.coverImageUrl} alt={`${item.name} ${slot.slot}`} className="aspect-[3/4] h-full w-full object-cover" loading="lazy" decoding="async" />
-                  </div>
+                  <ArtworkFrame src={slot.cardUrl || slot.detailUrl || item.coverImageUrl} alt={`${item.name} ${slot.slot}`} aspectClassName="aspect-[3/4]" />
                   <p className="mt-2 truncate text-[11px] text-white/56">{slot.slot}</p>
                 </div>
               ))}
@@ -273,9 +269,7 @@ export function WorldDetailPage({ chrome, slug }: { chrome: PlatformPageChromePr
         }}
       />
       <div className="space-y-6">
-        <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#121418]">
-          <img src={item.coverImageUrl} alt={item.name} className="h-[360px] w-full object-contain p-4" loading="eager" decoding="async" />
-        </div>
+        <ArtworkFrame src={item.coverImageUrl} alt={item.name} aspectClassName="aspect-[16/9]" priority />
         <div className="grid gap-6 xl:grid-cols-[1.02fr_0.98fr]">
           <div className="space-y-6 rounded-[2rem] border border-white/10 bg-[#20242b] p-6">
             <div>
@@ -391,13 +385,9 @@ export function RoomPage({ chrome, roomId }: { chrome: PlatformPageChromeProps; 
         <div className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
           <div className="space-y-4">
             {room.world ? (
-              <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#121418]">
-                <img src={activeWorldImage} alt={room.world.name} className="h-[240px] w-full object-contain p-4" loading="eager" decoding="async" />
-              </div>
+              <ArtworkFrame src={activeWorldImage} alt={room.world.name} aspectClassName="aspect-[16/9]" priority />
             ) : null}
-            <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#121418]">
-              <img src={activeCharacterImage} alt={room.character.name} className="h-full w-full object-contain p-4" loading="eager" decoding="async" />
-            </div>
+            <ArtworkFrame src={activeCharacterImage} alt={room.character.name} aspectClassName="aspect-[3/4]" priority />
           </div>
           <div className="space-y-6 rounded-[2rem] border border-white/10 bg-[#20242b] p-6">
             <div className="flex items-start justify-between gap-4">
@@ -463,15 +453,7 @@ const FileUploadCard = ({
   onChange: (file: File) => void
 }) => (
   <div className="grid gap-4 rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4 md:grid-cols-[220px_minmax(0,1fr)]">
-    <div className="overflow-hidden rounded-[1.2rem] border border-white/10 bg-[#111317]">
-      <div className={aspectClassName}>
-        {previewUrl ? (
-          <img src={previewUrl} alt={previewAlt} className="h-full w-full object-cover" loading="lazy" decoding="async" />
-        ) : (
-          <div className="flex h-full items-center justify-center text-sm text-white/38">미리보기 없음</div>
-        )}
-      </div>
-    </div>
+    <ArtworkFrame src={previewUrl} alt={previewAlt} aspectClassName={aspectClassName} />
 
     <div className="flex flex-col justify-between gap-4">
       <div>
@@ -684,15 +666,7 @@ const SituationImageSlotsEditor = ({
       {slots.slice(1).map((slot) => (
         <div key={slot.id} className="grid gap-4 rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4 lg:grid-cols-[220px_minmax(0,1fr)]">
           <div className="space-y-3">
-            <div className="overflow-hidden rounded-[1.2rem] border border-white/10 bg-[#111317]">
-              <div className={aspectClassName}>
-                {slot.previewUrl ? (
-                  <img src={slot.previewUrl} alt={`${slot.slot || '상황별'} 이미지 미리보기`} className="h-full w-full object-cover" loading="lazy" decoding="async" />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-sm text-white/38">미리보기 없음</div>
-                )}
-              </div>
-            </div>
+            <ArtworkFrame src={slot.previewUrl} alt={`${slot.slot || '상황별'} 이미지 미리보기`} aspectClassName={aspectClassName} />
             <label className={`inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-full px-5 text-sm font-semibold tracking-[-0.015em] transition ${processingSlotId === slot.id ? 'pointer-events-none bg-white/8 text-white/48' : 'bg-white text-[#111317] hover:bg-white/92'}`}>
               <ImagePlus className="h-4 w-4" />{processingSlotId === slot.id ? '이미지 처리 중...' : '이미지 선택'}
               <input
@@ -843,6 +817,9 @@ export function CreateCharacterPage({ chrome }: { chrome: PlatformPageChromeProp
         </PageSection>
 
         <PageSection title="캐릭터 이미지">
+          <div className="rounded-[1.3rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/68">
+            권장 3:4 · 최소 1440×1920 · 세로형 인물 위주 이미지를 권장합니다.
+          </div>
           <SituationImageSlotsEditor
             sectionTitle={name || '캐릭터'}
             mainDescription="대표 이미지는 기본 표정/기본 상태입니다. 아래에 상황별 이미지를 추가하면 AI가 현재 장면을 보고 전환할 수 있습니다."
@@ -1015,6 +992,9 @@ export function CreateWorldPage({ chrome }: { chrome: PlatformPageChromeProps })
         </PageSection>
 
         <PageSection title="월드 이미지">
+          <div className="rounded-[1.3rem] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/68">
+            권장 16:9 · 최소 1600×900 · 가로형 배경/공간 이미지를 권장합니다.
+          </div>
           <SituationImageSlotsEditor
             sectionTitle={name || '월드'}
             mainDescription="대표 이미지는 기본 장면입니다. 아래에 비, 밤, 전투, 축제 같은 상황별 장면 이미지를 추가할 수 있습니다."

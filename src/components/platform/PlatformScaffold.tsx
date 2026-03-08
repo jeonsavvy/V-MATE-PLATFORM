@@ -134,6 +134,49 @@ export function PageSection({ title, action, children, className }: { title: str
   )
 }
 
+export function ArtworkFrame({
+  src,
+  alt,
+  aspectClassName,
+  imageClassName,
+  priority = false,
+  className,
+}: {
+  src?: string
+  alt: string
+  aspectClassName: string
+  imageClassName?: string
+  priority?: boolean
+  className?: string
+}) {
+  return (
+    <div className={cn(`relative overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#111317] ${aspectClassName}`, className)}>
+      {src ? (
+        <>
+          <img
+            src={src}
+            alt=""
+            aria-hidden="true"
+            className="absolute inset-0 h-full w-full scale-110 object-cover blur-2xl opacity-45"
+            loading="lazy"
+            decoding="async"
+          />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.08),transparent_60%)]" />
+          <img
+            src={src}
+            alt={alt}
+            className={cn('relative z-[1] h-full w-full object-contain p-3', imageClassName)}
+            loading={priority ? 'eager' : 'lazy'}
+            decoding="async"
+          />
+        </>
+      ) : (
+        <div className="flex h-full items-center justify-center text-sm text-white/38">이미지 없음</div>
+      )}
+    </div>
+  )
+}
+
 export function FilterChip({ active = false, children, onClick }: { active?: boolean; children: ReactNode; onClick?: () => void }) {
   return (
     <button type="button" onClick={onClick} className={cn('rounded-full px-4 py-2 text-sm font-semibold transition', active ? 'bg-[#d92c63] text-white' : 'bg-white/8 text-white/72 hover:bg-white/12 hover:text-white')}>
@@ -147,9 +190,9 @@ export function EntityCard({ item, meta, onClick, cta = '상세 보기' }: { ite
   const mediaAspectClassName = item.entityType === 'world' ? 'aspect-[16/9]' : 'aspect-[3/4]'
   return (
     <button type="button" onClick={onClick} className="group overflow-hidden rounded-[1.75rem] border border-white/8 bg-[#17191d] text-left transition hover:-translate-y-1 hover:border-white/16">
-      <div className={`relative overflow-hidden bg-[#111317] ${mediaAspectClassName}`}>
-        <img src={item.coverImageUrl} alt={item.name} className="h-full w-full object-contain transition duration-500 group-hover:scale-[1.01]" loading="lazy" decoding="async" />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0)_18%,rgba(0,0,0,0.82)_100%)]" />
+      <div className="relative">
+        <ArtworkFrame src={item.coverImageUrl} alt={item.name} aspectClassName={mediaAspectClassName} imageClassName="transition duration-500 group-hover:scale-[1.01]" />
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0)_18%,rgba(0,0,0,0.82)_100%)]" />
         <div className="absolute left-4 top-4 flex flex-wrap gap-2">
           <span className="rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-semibold tracking-[0.14em] text-white">{item.sourceType === 'original' ? '오리지널' : '2차창작'}</span>
           {item.displayStatus === 'hidden' ? <span className="rounded-full bg-[#d92c63] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">숨김</span> : null}
