@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Eye, EyeOff, ImagePlus, Loader2, MessageCircle, PlusCircle, Trash2 } from 'lucide-react'
+import { ArrowLeft, Eye, EyeOff, Image, ImagePlus, Loader2, MessageCircle, PlusCircle, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { CharacterDetail, CharacterSummary, CharacterWorldLinkSummary, LibraryPayload, OwnerOpsDashboard, RoomSummary, WorldDetail, WorldSummary } from '@/lib/platform/types'
 import { platformApi } from '@/lib/platform/apiClient'
@@ -174,19 +174,14 @@ export function CharacterDetailPage({ chrome, slug }: { chrome: PlatformPageChro
           </div>
 
           <div className="flex flex-wrap gap-2">
+            {item.imageSlots.length > 0 ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-white/8 px-3 py-1 text-xs text-white/72">
+                <Image className="h-3.5 w-3.5" />
+                이미지 {item.imageSlots.length}장
+              </span>
+            ) : null}
             {item.tags.map((tag) => <span key={tag} className="rounded-full bg-white/8 px-3 py-1 text-xs text-white/72">{tag}</span>)}
           </div>
-
-          {item.imageSlots.length > 0 ? (
-            <div className="flex flex-wrap gap-3">
-              {item.imageSlots.slice(0, 6).map((slot) => (
-                <div key={slot.id} className="w-[84px]">
-                  <ArtworkFrame src={slot.cardUrl || slot.detailUrl || item.coverImageUrl} alt={`${item.name} ${slot.slot}`} aspectClassName="aspect-[3/4]" />
-                  <p className="mt-2 truncate text-[11px] text-white/56">{slot.slot}</p>
-                </div>
-              ))}
-            </div>
-          ) : null}
 
           <div className="flex flex-wrap gap-3">
             <Button onClick={() => handleStart(null)}><MessageCircle className="h-4 w-4" />캐릭터와 바로 대화</Button>

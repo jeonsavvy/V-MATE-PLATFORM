@@ -291,6 +291,8 @@ test('public-facing ui removes creator-name display across home, cards, and deta
   const pagesPath = path.join(srcRoot, 'components/platform/Pages.tsx');
   const pagesSource = await readFile(pagesPath, 'utf8');
   assert.equal(pagesSource.includes('item.creator.name'), false);
+  assert.equal(pagesSource.includes('item.imageSlots.slice(0, 6)'), false);
+  assert.ok(pagesSource.includes('이미지 {item.imageSlots.length}장'));
 });
 
 test('creator flows collapse description fields into practical prompt editors and remove public visibility control', async () => {
