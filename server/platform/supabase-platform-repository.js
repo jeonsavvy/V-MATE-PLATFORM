@@ -623,10 +623,27 @@ export const getLibraryPayload = async ({ event, userId }) => {
     const viewedCharacters = mergeRowsById(publicViewedCharacters, ownedViewedCharacters);
     const viewedWorlds = mergeRowsById(publicViewedWorlds, ownedViewedWorlds);
 
-    const bookmarkCharacterMap = new Map(bookmarkCharacters.map((item) => [item.id, summarizeCharacter(item)]));
-    const bookmarkWorldMap = new Map(bookmarkWorlds.map((item) => [item.id, summarizeWorld(item)]));
-    const recentCharacterMap = new Map(viewedCharacters.map((item) => [item.id, summarizeCharacter(item)]));
-    const recentWorldMap = new Map(viewedWorlds.map((item) => [item.id, summarizeWorld(item)]));
+    const allCharacterRows = mergeRowsById(bookmarkCharacters, mergeRowsById(viewedCharacters, ownedCharacters));
+    const allWorldRows = mergeRowsById(bookmarkWorlds, mergeRowsById(viewedWorlds, ownedWorlds));
+
+    const bookmarkCharacterMap = new Map(allCharacterRows.map((item) => [item.id, summarizeCharacter(item)]));
+    const bookmarkWorldMap = new Map(allWorldRows.map((item) => [item.id, summarizeWorld(item)]));
+    const recentCharacterMap = new Map(allCharacterRows.map((item) => [item.id, summarizeCharacter(item)]));
+    const recentWorldMap = new Map(allWorldRows.map((item) => [item.id, summarizeWorld(item)]));
+
+    if ((bookmarks || []).length > 0 && bookmarkCharacterMap.size + bookmarkWorldMap.size === 0) {
+      logServerWarn('[V-MATE] Library bookmarks exist but no target entities resolved', {
+        userId,
+        bookmarkCount: bookmarks.length,
+      });
+    }
+
+    if ((recentViews || []).length > 0 && recentCharacterMap.size + recentWorldMap.size === 0) {
+      logServerWarn('[V-MATE] Library recent views exist but no target entities resolved', {
+        userId,
+        recentViewCount: recentViews.length,
+      });
+    }
 
     return {
       bookmarks: (bookmarks || []).flatMap((item) => {
