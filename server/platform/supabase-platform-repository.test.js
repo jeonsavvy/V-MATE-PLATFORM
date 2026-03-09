@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { collectContentAssetUrls, incrementChatStartCountsBestEffort, resolveEntityByRef } from './supabase-platform-repository.js';
+import {
+  collectContentAssetUrls,
+  incrementChatStartCountsBestEffort,
+  resolveAsyncOrFallback,
+  resolveDataOrFallback,
+  resolveEntityByRef,
+} from './supabase-platform-repository.js';
 
 const createMockClient = ({ characterError = null, worldError = null } = {}) => ({
   from(table) {
@@ -145,4 +151,32 @@ test('resolveEntityByRef can resolve owner content even when it is not public', 
 
   assert.equal(resolved?.summary?.slug, 'hidden-character');
   assert.equal(resolved?.summary?.visibility, 'private');
+});
+
+test('resolveDataOrFallback returns fallback on rejected or errored query', async () => {
+  const fallbackRows = [];
+
+  const rejected = await resolveDataOrFallback({
+    label: 'library.bookmarks',
+    queryPromise: Promise.reject(new Error('relation bookmarks does not exist')),
+    fallback: fallbackRows,
+  });
+  assert.deepEqual(rejected, fallbackRows);
+
+  const errored = await resolveDataOrFallback({
+    label: 'library.recent_views',
+    queryPromise: Promise.resolve({ data: null, error: new Error('bad query') }),
+    fallback: fallbackRows,
+  });
+  assert.deepEqual(errored, fallbackRows);
+});
+
+test('resolveAsyncOrFallback returns fallback when async task throws', async () => {
+  const value = await resolveAsyncOrFallback({
+    label: 'library.recentRooms',
+    promise: Promise.reject(new Error('hydrate failed')),
+    fallback: [],
+  });
+
+  assert.deepEqual(value, []);
 });

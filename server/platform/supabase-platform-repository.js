@@ -67,6 +67,39 @@ const userClient = (event) => createSupabaseClient({ accessToken: extractBearerT
 const clone = (value) => structuredClone(value);
 const nowIso = () => new Date().toISOString();
 
+export const resolveDataOrFallback = async ({ label, queryPromise, fallback }) => {
+  try {
+    const result = await queryPromise;
+    if (result?.error) {
+      logServerWarn('[V-MATE] Query failed, using fallback data', {
+        label,
+        message: result.error?.message || String(result.error),
+      });
+      return fallback;
+    }
+    return typeof result?.data === 'undefined' || result?.data === null ? fallback : result.data;
+  } catch (error) {
+    logServerWarn('[V-MATE] Query threw, using fallback data', {
+      label,
+      message: error?.message || String(error),
+    });
+    return fallback;
+  }
+};
+
+export const resolveAsyncOrFallback = async ({ label, promise, fallback }) => {
+  try {
+    const value = await promise;
+    return typeof value === 'undefined' || value === null ? fallback : value;
+  } catch (error) {
+    logServerWarn('[V-MATE] Async task threw, using fallback data', {
+      label,
+      message: error?.message || String(error),
+    });
+    return fallback;
+  }
+};
+
 const summarizeCharacter = (row) => ({
   id: row.id,
   entityType: 'character',
@@ -530,12 +563,32 @@ export const getLibraryPayload = async ({ event, userId }) => {
   const publicReadClient = await publicClient();
   if (!client || !publicReadClient) return null;
 
-  const [{ data: bookmarks }, { data: recentViews }, recentRooms, { data: ownedCharacters }, { data: ownedWorlds }] = await Promise.all([
-    client.from('bookmarks').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
-    client.from('recent_views').select('*').eq('user_id', userId).order('viewed_at', { ascending: false }).limit(20),
-    listRecentRooms({ event, userId }),
-    client.from('characters').select('*').eq('owner_user_id', userId).order('updated_at', { ascending: false }),
-    client.from('worlds').select('*').eq('owner_user_id', userId).order('updated_at', { ascending: false }),
+  const [bookmarks, recentViews, recentRooms, ownedCharacters, ownedWorlds] = await Promise.all([
+    resolveDataOrFallback({
+      label: 'library.bookmarks',
+      queryPromise: client.from('bookmarks').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+      fallback: [],
+    }),
+    resolveDataOrFallback({
+      label: 'library.recent_views',
+      queryPromise: client.from('recent_views').select('*').eq('user_id', userId).order('viewed_at', { ascending: false }).limit(20),
+      fallback: [],
+    }),
+    resolveAsyncOrFallback({
+      label: 'library.recentRooms',
+      promise: listRecentRooms({ event, userId }),
+      fallback: [],
+    }),
+    resolveDataOrFallback({
+      label: 'library.ownedCharacters',
+      queryPromise: client.from('characters').select('*').eq('owner_user_id', userId).order('updated_at', { ascending: false }),
+      fallback: [],
+    }),
+    resolveDataOrFallback({
+      label: 'library.ownedWorlds',
+      queryPromise: client.from('worlds').select('*').eq('owner_user_id', userId).order('updated_at', { ascending: false }),
+      fallback: [],
+    }),
   ]);
 
   const bookmarkedCharacterIds = (bookmarks || []).filter((item) => item.target_type === 'character').map((item) => item.target_id);
@@ -575,8 +628,8 @@ export const getLibraryPayload = async ({ event, userId }) => {
     }),
     recentRooms,
     owned: {
-      characters: (ownedCharacters || []).map(summarizeCharacter),
-      worlds: (ownedWorlds || []).map(summarizeWorld),
+      characters: ownedCharacters.map(summarizeCharacter),
+      worlds: ownedWorlds.map(summarizeWorld),
     },
   };
 };
