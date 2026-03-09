@@ -320,6 +320,18 @@ test('creator flows collapse description fields into practical prompt editors an
   assert.equal(source.includes('캐릭터 설정'), false);
 });
 
+test('editing prompt content preserves existing image urls when no new upload happens', async () => {
+  const pagesPath = path.join(srcRoot, 'components/platform/Pages.tsx');
+  const source = await readFile(pagesPath, 'utf8');
+
+  assert.ok(source.includes('existingThumbUrl'));
+  assert.ok(source.includes('existingCardUrl'));
+  assert.ok(source.includes('existingDetailUrl'));
+  assert.ok(source.includes("findVariant('thumb') || slot.existingThumbUrl || ''"));
+  assert.ok(source.includes("findVariant('card') || slot.existingCardUrl || ''"));
+  assert.ok(source.includes("findVariant('detail') || findVariant('hero') || slot.existingDetailUrl || ''"));
+});
+
 test('ops page exposes banner auto/manual controls and delete actions', async () => {
   const pagesPath = path.join(srcRoot, 'components/platform/Pages.tsx');
   const source = await readFile(pagesPath, 'utf8');

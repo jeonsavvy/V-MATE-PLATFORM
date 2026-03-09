@@ -501,6 +501,9 @@ interface ImageSlotDraft {
   assets: ResizedImageAsset[]
   previewUrl: string
   sourceSize: string
+  existingThumbUrl: string
+  existingCardUrl: string
+  existingDetailUrl: string
 }
 
 const createSlotId = () => `slot-${Math.random().toString(36).slice(2, 10)}`
@@ -520,6 +523,9 @@ const createImageSlotDraft = (slot: string, usage: string, trigger: string, prio
   assets: [],
   previewUrl: '',
   sourceSize: '',
+  existingThumbUrl: '',
+  existingCardUrl: '',
+  existingDetailUrl: '',
 })
 
 const createDraftFromExistingSlot = (slot: {
@@ -540,6 +546,9 @@ const createDraftFromExistingSlot = (slot: {
   assets: [],
   previewUrl: slot.detailUrl || slot.cardUrl || slot.thumbUrl || '',
   sourceSize: '',
+  existingThumbUrl: slot.thumbUrl || '',
+  existingCardUrl: slot.cardUrl || '',
+  existingDetailUrl: slot.detailUrl || '',
 })
 
 const uploadPreparedAssets = async ({
@@ -606,9 +615,9 @@ const buildSlotRecord = ({
     usage: slot.usage.trim(),
     trigger: slot.trigger.trim(),
     priority: Number(slot.priority || 0),
-    thumbUrl: findVariant('thumb'),
-    cardUrl: findVariant('card'),
-    detailUrl: findVariant('detail') || findVariant('hero'),
+    thumbUrl: findVariant('thumb') || slot.existingThumbUrl || '',
+    cardUrl: findVariant('card') || slot.existingCardUrl || '',
+    detailUrl: findVariant('detail') || findVariant('hero') || slot.existingDetailUrl || '',
   }
 }
 
