@@ -32,6 +32,7 @@ import { mapGeminiApiError } from './modules/upstream-error-map.js';
 import { createTraceId } from './modules/trace-id.js';
 import {
     getGeminiContextCacheConfig,
+    getChatRuntimeLimits,
     getClientRequestDedupeConfig,
     getRateLimitConfig,
     getRequestBodyLimitBytes,
@@ -241,6 +242,7 @@ export const handler = async (event, context) => {
             clientRequestId: clientRequestId || null,
             hasAuthenticatedUser: Boolean(authenticatedUserId),
         };
+        const chatRuntimeLimits = getChatRuntimeLimits();
 
         const executeModelAndNormalize = async () => {
             const geminiResult = await executeGeminiChatRequest({
@@ -295,6 +297,10 @@ export const handler = async (event, context) => {
 
             const normalizedPayload = normalizeAssistantPayload(modelText, {
                 ...logMeta,
+                modelName: FIXED_GEMINI_MODEL_NAME,
+                promptSnapshotLength: trimmedSystemPrompt.length,
+                historyMessageCount: Array.isArray(messageHistory) ? messageHistory.length : 0,
+                outputLimit: chatRuntimeLimits.primaryMaxOutputTokens,
                 finishReason: geminiData?.candidates?.[0]?.finishReason || null,
                 promptBlockReason: geminiData?.promptFeedback?.blockReason || null,
             });
@@ -304,6 +310,12 @@ export const handler = async (event, context) => {
             if (isFormatFallback) {
                 logServerWarn('[V-MATE] Returning hard error for format fallback payload', {
                     ...logMeta,
+                    modelName: FIXED_GEMINI_MODEL_NAME,
+                    promptSnapshotLength: trimmedSystemPrompt.length,
+                    historyMessageCount: Array.isArray(messageHistory) ? messageHistory.length : 0,
+                    outputLimit: chatRuntimeLimits.primaryMaxOutputTokens,
+                    finishReason: geminiData?.candidates?.[0]?.finishReason || null,
+                    promptBlockReason: geminiData?.promptFeedback?.blockReason || null,
                     modelTextLength: String(modelText || '').length,
                 });
                 if (responseCachedContent) {

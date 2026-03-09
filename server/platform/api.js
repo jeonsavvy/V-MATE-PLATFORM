@@ -118,14 +118,18 @@ const handleRoomChat = async ({ event, headers, startedAtMs, traceId, roomId }) 
     return jsonError({ statusCode: 404, headers, startedAtMs, traceId, error: 'Room not found.', errorCode: 'ROOM_NOT_FOUND' });
   }
 
+  const roomHistory = await getPlatformStore().getRoomHistoryForModel({ event, roomId });
+  const chatRuntimeLimits = getChatRuntimeLimits();
+  const roomModelName = 'gemini-3-flash-preview';
+
   const result = await executeGeminiChatRequest({
     apiKey,
-    modelName: 'gemini-3-flash-preview',
+    modelName: roomModelName,
     requestStartedAt: startedAtMs,
     requestTraceId: traceId,
     normalizedCharacterId: room.character.slug,
     userMessage,
-    messageHistory: await getPlatformStore().getRoomHistoryForModel({ event, roomId }),
+    messageHistory: roomHistory,
     requestCachedContent: null,
     trimmedSystemPrompt: promptContext.promptSnapshot,
     promptCacheAdapter: null,
@@ -135,7 +139,14 @@ const handleRoomChat = async ({ event, headers, startedAtMs, traceId, roomId }) 
     return jsonError({ statusCode: result.error?.status || 500, headers, startedAtMs, traceId, error: result.error?.message || 'Room chat failed.', errorCode: result.error?.code || 'ROOM_CHAT_FAILED', retryable: Boolean(result.retryable) });
   }
 
-  const message = normalizeAssistantPayload(result.modelText, { traceId, roomId });
+  const message = normalizeAssistantPayload(result.modelText, {
+    traceId,
+    roomId,
+    modelName: roomModelName,
+    promptSnapshotLength: String(promptContext.promptSnapshot || '').length,
+    historyMessageCount: roomHistory.length,
+    outputLimit: chatRuntimeLimits.primaryMaxOutputTokens,
+  });
   const nextRoom = await getPlatformStore().appendRoomMessages({ event, roomId, userMessage, assistantMessage: message });
 
   return jsonOk({
@@ -146,7 +157,7 @@ const handleRoomChat = async ({ event, headers, startedAtMs, traceId, roomId }) 
       message,
       trace_id: traceId,
       thinking_level: getGeminiThinkingLevel(),
-      history_window: getChatRuntimeLimits().maxHistoryMessages,
+      history_window: chatRuntimeLimits.maxHistoryMessages,
     },
   });
 };

@@ -70,7 +70,7 @@ test('returns defaults when env vars are missing', () => {
     maxHistoryMessages: 10,
     maxPartChars: 700,
     maxSystemPromptChars: 5000,
-    primaryMaxOutputTokens: 1024,
+    primaryMaxOutputTokens: 2048,
     modelTimeoutMs: 15000,
     functionTotalTimeoutMs: 20000,
     functionTimeoutGuardMs: 1500,

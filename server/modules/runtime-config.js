@@ -177,7 +177,7 @@ export const getChatRuntimeLimits = () => {
             min: 500,
             max: 12000,
         }),
-        primaryMaxOutputTokens: toSafeInt(process.env.GEMINI_MAX_OUTPUT_TOKENS, 1024, {
+        primaryMaxOutputTokens: toSafeInt(process.env.GEMINI_MAX_OUTPUT_TOKENS, 2048, {
             min: 64,
             max: 8192,
         }),

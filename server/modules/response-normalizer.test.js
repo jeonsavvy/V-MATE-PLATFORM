@@ -37,6 +37,15 @@ test('normalizeAssistantPayload uses safe fallback on broken contract-like json'
   assert.equal(normalized.inner_heart, '');
 });
 
+test('normalizeAssistantPayload recovers truncated contract json when core fields are still extractable', () => {
+  const normalized = normalizeAssistantPayload(`{"emotion":"normal","inner_heart":"긴장하고 있다.","response":"지금은 안으로 들어가면 돼.\n서두르자.","narration":"비가 그친 골목이다."`);
+
+  assert.equal(normalized.emotion, 'normal');
+  assert.equal(normalized.inner_heart, '긴장하고 있다.');
+  assert.equal(normalized.response, '지금은 안으로 들어가면 돼.\n서두르자.');
+  assert.equal(normalized.narration, '비가 그친 골목이다.');
+});
+
 test('normalizeAssistantPayload warning metadata omits raw response preview text', () => {
   const warnCalls = [];
   console.warn = (...args) => {
@@ -49,6 +58,33 @@ test('normalizeAssistantPayload warning metadata omits raw response preview text
   const metadata = warnCalls[0][1];
   assert.equal(typeof metadata?.rawTextLength, 'number');
   assert.equal(Object.prototype.hasOwnProperty.call(metadata || {}, 'rawTextPreview'), false);
+});
+
+test('normalizeAssistantPayload keeps debug-safe log context for broken contract fallback', () => {
+  const warnCalls = [];
+  console.warn = (...args) => {
+    warnCalls.push(args);
+  };
+
+  normalizeAssistantPayload('{"emotion":"happy","response":', {
+    traceId: 'trace-1',
+    roomId: 'room-1',
+    modelName: 'gemini-3-flash-preview',
+    promptSnapshotLength: 4321,
+    historyMessageCount: 7,
+    outputLimit: 2048,
+    finishReason: 'MAX_TOKENS',
+  });
+
+  assert.ok(warnCalls.length > 0);
+  const metadata = warnCalls[0][1];
+  assert.equal(metadata?.traceId, 'trace-1');
+  assert.equal(metadata?.roomId, 'room-1');
+  assert.equal(metadata?.modelName, 'gemini-3-flash-preview');
+  assert.equal(metadata?.promptSnapshotLength, 4321);
+  assert.equal(metadata?.historyMessageCount, 7);
+  assert.equal(metadata?.outputLimit, 2048);
+  assert.equal(metadata?.finishReason, 'MAX_TOKENS');
 });
 
 test('extractGeminiResponseText returns first non-empty text part', () => {

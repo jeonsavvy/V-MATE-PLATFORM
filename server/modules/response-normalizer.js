@@ -1,6 +1,7 @@
 import { logServerWarn } from './server-logger.js';
 
 const ALLOWED_EMOTIONS = new Set(['normal', 'happy', 'confused', 'angry']);
+const CONTRACT_KEYS = ['emotion', 'inner_heart', 'response', 'narration', 'character_image_slot', 'world_image_slot'];
 
 export const JSON_RESPONSE_SCHEMA = {
     type: 'OBJECT',
@@ -97,6 +98,42 @@ const tryParseLooseJsonObject = (text) => {
     }
 
     return null;
+};
+
+const tryExtractContractFields = (text) => {
+    if (!text || typeof text !== 'string') {
+        return null;
+    }
+
+    const normalizedText = text
+        .replace(/[“”]/g, '"')
+        .replace(/[‘’]/g, "'")
+        .trim();
+    const extracted = {};
+    const joinedKeys = CONTRACT_KEYS.join('|');
+
+    for (const key of CONTRACT_KEYS) {
+        const terminatedPattern = new RegExp(
+            `["']?${key}["']?\\s*:\\s*"([\\s\\S]*?)(?="\\s*,\\s*["']?(?:${joinedKeys})["']?\\s*:|"\\s*}|"$)`,
+            'i'
+        );
+        const unterminatedTailPattern = new RegExp(
+            `["']?${key}["']?\\s*:\\s*"([\\s\\S]*)$`,
+            'i'
+        );
+
+        const match = normalizedText.match(terminatedPattern) || normalizedText.match(unterminatedTailPattern);
+        if (!match) {
+            continue;
+        }
+
+        extracted[key] = String(match[1] || '')
+            .replace(/\\"/g, '"')
+            .replace(/\\n/g, '\n')
+            .trim();
+    }
+
+    return Object.keys(extracted).length > 0 ? extracted : null;
 };
 
 const extractJsonObjectCandidates = (text) => {
@@ -198,13 +235,20 @@ export const normalizeAssistantPayload = (rawText, logContext = null) => {
 
     if (!parsed) {
         if (looksLikeBrokenContractJson(normalizedText)) {
-            logServerWarn('[V-MATE] JSON normalization fallback (broken contract JSON)', {
-                ...safeLogContext,
-                rawTextLength: normalizedText.length,
-            });
-            return safeFallback;
+            parsed = tryExtractContractFields(normalizedText);
+            if (parsed) {
+                parseMode = 'contract-recovery';
+            } else {
+                logServerWarn('[V-MATE] JSON normalization fallback (broken contract JSON)', {
+                    ...safeLogContext,
+                    rawTextLength: normalizedText.length,
+                });
+                return safeFallback;
+            }
         }
+    }
 
+    if (!parsed) {
         const plainResponse = normalizedText
             .replace(/^here is (the )?json requested:?/i, '')
             .replace(/^json:?/i, '')
