@@ -340,8 +340,20 @@ const getCharacterRowBySlug = async (client, slug) => {
   return data;
 };
 
+const getCharacterRowById = async (client, id) => {
+  const { data, error } = await basePublicContentQuery(client, 'characters').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data;
+};
+
 const getWorldRowBySlug = async (client, slug) => {
   const { data, error } = await basePublicContentQuery(client, 'worlds').eq('slug', slug).maybeSingle();
+  if (error) throw error;
+  return data;
+};
+
+const getWorldRowById = async (client, id) => {
+  const { data, error } = await basePublicContentQuery(client, 'worlds').eq('id', id).maybeSingle();
   if (error) throw error;
   return data;
 };
@@ -353,9 +365,23 @@ const getOwnedCharacterRowBySlug = async (client, slug, userId) => {
   return data;
 };
 
+const getOwnedCharacterRowById = async (client, id, userId) => {
+  if (!client || !userId) return null;
+  const { data, error } = await client.from('characters').select('*').eq('owner_user_id', userId).eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data;
+};
+
 const getOwnedWorldRowBySlug = async (client, slug, userId) => {
   if (!client || !userId) return null;
   const { data, error } = await client.from('worlds').select('*').eq('owner_user_id', userId).eq('slug', slug).maybeSingle();
+  if (error) throw error;
+  return data;
+};
+
+const getOwnedWorldRowById = async (client, id, userId) => {
+  if (!client || !userId) return null;
+  const { data, error } = await client.from('worlds').select('*').eq('owner_user_id', userId).eq('id', id).maybeSingle();
   if (error) throw error;
   return data;
 };
@@ -447,6 +473,15 @@ export const resolveEntityByRef = async ({ publicClientInstance, userClientInsta
     return row ? { row, summary: summarizeCharacter(row) } : null;
   }
   const row = await getOwnedWorldRowBySlug(userClientInstance, ref, userId) || await getWorldRowBySlug(publicClientInstance, ref);
+  return row ? { row, summary: summarizeWorld(row) } : null;
+};
+
+export const resolveEntityById = async ({ publicClientInstance, userClientInstance, userId, entityType, id }) => {
+  if (entityType === 'character') {
+    const row = await getOwnedCharacterRowById(userClientInstance, id, userId) || await getCharacterRowById(publicClientInstance, id);
+    return row ? { row, summary: summarizeCharacter(row) } : null;
+  }
+  const row = await getOwnedWorldRowById(userClientInstance, id, userId) || await getWorldRowById(publicClientInstance, id);
   return row ? { row, summary: summarizeWorld(row) } : null;
 };
 
@@ -602,58 +637,39 @@ export const getLibraryPayload = async ({ event, userId }) => {
       }),
     ]);
 
-    const bookmarkedCharacterIds = (bookmarks || []).filter((item) => item.target_type === 'character').map((item) => item.target_id);
-    const bookmarkedWorldIds = (bookmarks || []).filter((item) => item.target_type === 'world').map((item) => item.target_id);
-    const recentCharacterIds = (recentViews || []).filter((item) => item.target_type === 'character').map((item) => item.target_id);
-    const recentWorldIds = (recentViews || []).filter((item) => item.target_type === 'world').map((item) => item.target_id);
-
-    const [publicBookmarkCharacters, ownedBookmarkCharacters, publicBookmarkWorlds, ownedBookmarkWorlds, publicViewedCharacters, ownedViewedCharacters, publicViewedWorlds, ownedViewedWorlds] = await Promise.all([
-      resolveAsyncOrFallback({ label: 'library.publicBookmarkCharacters', promise: getCharacterRowsByIds(publicReadClient, bookmarkedCharacterIds), fallback: [] }),
-      resolveAsyncOrFallback({ label: 'library.ownedBookmarkCharacters', promise: getOwnedCharacterRowsByIds(client, bookmarkedCharacterIds, userId), fallback: [] }),
-      resolveAsyncOrFallback({ label: 'library.publicBookmarkWorlds', promise: getWorldRowsByIds(publicReadClient, bookmarkedWorldIds), fallback: [] }),
-      resolveAsyncOrFallback({ label: 'library.ownedBookmarkWorlds', promise: getOwnedWorldRowsByIds(client, bookmarkedWorldIds, userId), fallback: [] }),
-      resolveAsyncOrFallback({ label: 'library.publicViewedCharacters', promise: getCharacterRowsByIds(publicReadClient, recentCharacterIds), fallback: [] }),
-      resolveAsyncOrFallback({ label: 'library.ownedViewedCharacters', promise: getOwnedCharacterRowsByIds(client, recentCharacterIds, userId), fallback: [] }),
-      resolveAsyncOrFallback({ label: 'library.publicViewedWorlds', promise: getWorldRowsByIds(publicReadClient, recentWorldIds), fallback: [] }),
-      resolveAsyncOrFallback({ label: 'library.ownedViewedWorlds', promise: getOwnedWorldRowsByIds(client, recentWorldIds, userId), fallback: [] }),
-    ]);
-
-    const bookmarkCharacters = mergeRowsById(publicBookmarkCharacters, ownedBookmarkCharacters);
-    const bookmarkWorlds = mergeRowsById(publicBookmarkWorlds, ownedBookmarkWorlds);
-    const viewedCharacters = mergeRowsById(publicViewedCharacters, ownedViewedCharacters);
-    const viewedWorlds = mergeRowsById(publicViewedWorlds, ownedViewedWorlds);
-
-    const allCharacterRows = mergeRowsById(bookmarkCharacters, mergeRowsById(viewedCharacters, ownedCharacters));
-    const allWorldRows = mergeRowsById(bookmarkWorlds, mergeRowsById(viewedWorlds, ownedWorlds));
-
-    const bookmarkCharacterMap = new Map(allCharacterRows.map((item) => [item.id, summarizeCharacter(item)]));
-    const bookmarkWorldMap = new Map(allWorldRows.map((item) => [item.id, summarizeWorld(item)]));
-    const recentCharacterMap = new Map(allCharacterRows.map((item) => [item.id, summarizeCharacter(item)]));
-    const recentWorldMap = new Map(allWorldRows.map((item) => [item.id, summarizeWorld(item)]));
-
-    if ((bookmarks || []).length > 0 && bookmarkCharacterMap.size + bookmarkWorldMap.size === 0) {
-      logServerWarn('[V-MATE] Library bookmarks exist but no target entities resolved', {
-        userId,
-        bookmarkCount: bookmarks.length,
+    const resolvedBookmarks = await Promise.all((bookmarks || []).map(async (item) => {
+      const resolved = await resolveAsyncOrFallback({
+        label: `library.bookmark.${item.id}`,
+        promise: resolveEntityById({
+          publicClientInstance: publicReadClient,
+          userClientInstance: client,
+          userId,
+          entityType: item.target_type,
+          id: item.target_id,
+        }),
+        fallback: null,
       });
-    }
+      return resolved ? { id: item.id, entityType: item.target_type, item: resolved.summary, createdAt: item.created_at } : null;
+    }));
 
-    if ((recentViews || []).length > 0 && recentCharacterMap.size + recentWorldMap.size === 0) {
-      logServerWarn('[V-MATE] Library recent views exist but no target entities resolved', {
-        userId,
-        recentViewCount: recentViews.length,
+    const resolvedRecentViews = await Promise.all((recentViews || []).map(async (item) => {
+      const resolved = await resolveAsyncOrFallback({
+        label: `library.recentView.${item.id}`,
+        promise: resolveEntityById({
+          publicClientInstance: publicReadClient,
+          userClientInstance: client,
+          userId,
+          entityType: item.target_type,
+          id: item.target_id,
+        }),
+        fallback: null,
       });
-    }
+      return resolved ? { id: item.id, entityType: item.target_type, item: resolved.summary, viewedAt: item.viewed_at } : null;
+    }));
 
     return {
-      bookmarks: (bookmarks || []).flatMap((item) => {
-        const mapped = item.target_type === 'character' ? bookmarkCharacterMap.get(item.target_id) : bookmarkWorldMap.get(item.target_id);
-        return mapped ? [{ id: item.id, entityType: item.target_type, item: mapped, createdAt: item.created_at }] : [];
-      }),
-      recentViews: (recentViews || []).flatMap((item) => {
-        const mapped = item.target_type === 'character' ? recentCharacterMap.get(item.target_id) : recentWorldMap.get(item.target_id);
-        return mapped ? [{ id: item.id, entityType: item.target_type, item: mapped, viewedAt: item.viewed_at }] : [];
-      }),
+      bookmarks: resolvedBookmarks.filter(Boolean),
+      recentViews: resolvedRecentViews.filter(Boolean),
       recentRooms,
       owned: {
         characters: ownedCharacters.map(summarizeCharacter),

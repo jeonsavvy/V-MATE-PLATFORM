@@ -5,6 +5,7 @@ import {
   incrementChatStartCountsBestEffort,
   resolveAsyncOrFallback,
   resolveDataOrFallback,
+  resolveEntityById,
   resolveEntityByRef,
 } from './supabase-platform-repository.js';
 
@@ -150,6 +151,81 @@ test('resolveEntityByRef can resolve owner content even when it is not public', 
   });
 
   assert.equal(resolved?.summary?.slug, 'hidden-character');
+  assert.equal(resolved?.summary?.visibility, 'private');
+});
+
+test('resolveEntityById can resolve owner content even when it is not public', async () => {
+  const publicClientInstance = {
+    from() {
+      return {
+        select() {
+          return {
+            eq() {
+              return {
+                async maybeSingle() {
+                  return { data: null, error: null };
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+
+  const userClientInstance = {
+    from(table) {
+      return {
+        select() {
+          return {
+            eq() {
+              return {
+                eq(nextColumn, id) {
+                  void nextColumn;
+                  return {
+                    async maybeSingle() {
+                      return {
+                        data: table === 'worlds'
+                          ? {
+                              id,
+                              owner_user_id: 'user-1',
+                              slug: 'hidden-world',
+                              name: '비공개 월드',
+                              headline: '',
+                              summary: '요약',
+                              cover_image_url: '',
+                              tags: [],
+                              visibility: 'private',
+                              display_status: 'draft',
+                              source_type: 'original',
+                              favorite_count: 0,
+                              chat_start_count: 0,
+                              updated_at: new Date().toISOString(),
+                              prompt_profile_json: {},
+                            }
+                          : null,
+                        error: null,
+                      };
+                    },
+                  };
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+
+  const resolved = await resolveEntityById({
+    publicClientInstance,
+    userClientInstance,
+    userId: 'user-1',
+    entityType: 'world',
+    id: 'world-id-1',
+  });
+
+  assert.equal(resolved?.summary?.id, 'world-id-1');
   assert.equal(resolved?.summary?.visibility, 'private');
 });
 
