@@ -122,6 +122,37 @@ const dedupeRecentViewRows = (rows) => {
   });
 };
 
+export const mapLibraryEntriesToResolvedItems = ({
+  entries,
+  timestampKey,
+  ownedCharacters = [],
+  ownedWorlds = [],
+  publicCharacters = [],
+  publicWorlds = [],
+}) => {
+  const ownedCharacterMap = new Map((ownedCharacters || []).map((item) => [item.id, item]));
+  const ownedWorldMap = new Map((ownedWorlds || []).map((item) => [item.id, item]));
+  const publicCharacterMap = new Map((publicCharacters || []).map((item) => [item.id, item]));
+  const publicWorldMap = new Map((publicWorlds || []).map((item) => [item.id, item]));
+
+  return (entries || []).flatMap((entry) => {
+    const item = entry.target_type === 'character'
+      ? ownedCharacterMap.get(entry.target_id) || publicCharacterMap.get(entry.target_id)
+      : ownedWorldMap.get(entry.target_id) || publicWorldMap.get(entry.target_id);
+
+    if (!item) {
+      return [];
+    }
+
+    return [{
+      id: entry.id,
+      entityType: entry.target_type,
+      item,
+      [timestampKey === 'viewed_at' ? 'viewedAt' : 'createdAt']: entry[timestampKey],
+    }];
+  });
+};
+
 const summarizeCharacter = (row) => ({
   id: row.id,
   entityType: 'character',
@@ -696,39 +727,47 @@ export const getLibraryPayload = async ({ event, userId }) => {
 
     const recentViews = dedupeRecentViewRows(recentViewsRaw);
 
-    const resolvedBookmarks = await Promise.all((bookmarks || []).map(async (item) => {
-      const resolved = await resolveAsyncOrFallback({
-        label: `library.bookmark.${item.id}`,
-        promise: resolveEntityById({
-          publicClientInstance: publicReadClient,
-          userClientInstance: client,
-          userId,
-          entityType: item.target_type,
-          id: item.target_id,
-        }),
-        fallback: null,
-      });
-      return resolved ? { id: item.id, entityType: item.target_type, item: resolved.summary, createdAt: item.created_at } : null;
-    }));
+    const unresolvedBookmarkCharacterIds = (bookmarks || [])
+      .filter((item) => item.target_type === 'character' && !ownedCharacters.some((row) => row.id === item.target_id))
+      .map((item) => item.target_id);
+    const unresolvedBookmarkWorldIds = (bookmarks || [])
+      .filter((item) => item.target_type === 'world' && !ownedWorlds.some((row) => row.id === item.target_id))
+      .map((item) => item.target_id);
+    const unresolvedRecentCharacterIds = recentViews
+      .filter((item) => item.target_type === 'character' && !ownedCharacters.some((row) => row.id === item.target_id))
+      .map((item) => item.target_id);
+    const unresolvedRecentWorldIds = recentViews
+      .filter((item) => item.target_type === 'world' && !ownedWorlds.some((row) => row.id === item.target_id))
+      .map((item) => item.target_id);
 
-    const resolvedRecentViews = await Promise.all((recentViews || []).map(async (item) => {
-      const resolved = await resolveAsyncOrFallback({
-        label: `library.recentView.${item.id}`,
-        promise: resolveEntityById({
-          publicClientInstance: publicReadClient,
-          userClientInstance: client,
-          userId,
-          entityType: item.target_type,
-          id: item.target_id,
-        }),
-        fallback: null,
-      });
-      return resolved ? { id: item.id, entityType: item.target_type, item: resolved.summary, viewedAt: item.viewed_at } : null;
-    }));
+    const [publicBookmarkCharacters, publicBookmarkWorlds, publicRecentCharacters, publicRecentWorlds] = await Promise.all([
+      resolveAsyncOrFallback({ label: 'library.publicBookmarkCharacters', promise: getCharacterRowsByIds(publicReadClient, unresolvedBookmarkCharacterIds), fallback: [] }),
+      resolveAsyncOrFallback({ label: 'library.publicBookmarkWorlds', promise: getWorldRowsByIds(publicReadClient, unresolvedBookmarkWorldIds), fallback: [] }),
+      resolveAsyncOrFallback({ label: 'library.publicRecentCharacters', promise: getCharacterRowsByIds(publicReadClient, unresolvedRecentCharacterIds), fallback: [] }),
+      resolveAsyncOrFallback({ label: 'library.publicRecentWorlds', promise: getWorldRowsByIds(publicReadClient, unresolvedRecentWorldIds), fallback: [] }),
+    ]);
+
+    const resolvedBookmarks = mapLibraryEntriesToResolvedItems({
+      entries: bookmarks,
+      timestampKey: 'created_at',
+      ownedCharacters: ownedCharacters.map(summarizeCharacter),
+      ownedWorlds: ownedWorlds.map(summarizeWorld),
+      publicCharacters: publicBookmarkCharacters.map(summarizeCharacter),
+      publicWorlds: publicBookmarkWorlds.map(summarizeWorld),
+    });
+
+    const resolvedRecentViews = mapLibraryEntriesToResolvedItems({
+      entries: recentViews,
+      timestampKey: 'viewed_at',
+      ownedCharacters: ownedCharacters.map(summarizeCharacter),
+      ownedWorlds: ownedWorlds.map(summarizeWorld),
+      publicCharacters: publicRecentCharacters.map(summarizeCharacter),
+      publicWorlds: publicRecentWorlds.map(summarizeWorld),
+    });
 
     return {
-      bookmarks: resolvedBookmarks.filter(Boolean),
-      recentViews: resolvedRecentViews.filter(Boolean),
+      bookmarks: resolvedBookmarks,
+      recentViews: resolvedRecentViews,
       recentRooms,
       owned: {
         characters: ownedCharacters.map(summarizeCharacter),

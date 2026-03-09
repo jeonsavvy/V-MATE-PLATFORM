@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   collectContentAssetUrls,
   incrementChatStartCountsBestEffort,
+  mapLibraryEntriesToResolvedItems,
   persistRecentView,
   resolveAsyncOrFallback,
   resolveDataOrFallback,
@@ -302,4 +303,35 @@ test('persistRecentView falls back to replace flow when upsert conflict target i
   });
 
   assert.deepEqual(calls.map((item) => item.kind), ['upsert', 'delete', 'insert']);
+});
+
+test('mapLibraryEntriesToResolvedItems prefers owned entities before public entities', () => {
+  const entries = [
+    { id: 'bookmark-1', target_type: 'character', target_id: 'character-owned', created_at: '2026-03-09T00:00:00.000Z' },
+    { id: 'bookmark-2', target_type: 'world', target_id: 'world-public', created_at: '2026-03-09T00:00:01.000Z' },
+  ];
+
+  const resolved = mapLibraryEntriesToResolvedItems({
+    entries,
+    timestampKey: 'created_at',
+    ownedCharacters: [{ id: 'character-owned', entityType: 'character', slug: 'owned-character', name: '내 캐릭터' }],
+    ownedWorlds: [],
+    publicCharacters: [],
+    publicWorlds: [{ id: 'world-public', entityType: 'world', slug: 'public-world', name: '공개 월드' }],
+  });
+
+  assert.deepEqual(resolved, [
+    {
+      id: 'bookmark-1',
+      entityType: 'character',
+      item: { id: 'character-owned', entityType: 'character', slug: 'owned-character', name: '내 캐릭터' },
+      createdAt: '2026-03-09T00:00:00.000Z',
+    },
+    {
+      id: 'bookmark-2',
+      entityType: 'world',
+      item: { id: 'world-public', entityType: 'world', slug: 'public-world', name: '공개 월드' },
+      createdAt: '2026-03-09T00:00:01.000Z',
+    },
+  ]);
 });
