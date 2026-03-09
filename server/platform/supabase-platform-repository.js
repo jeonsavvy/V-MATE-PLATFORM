@@ -174,6 +174,36 @@ const removeStorageObjectsByUrls = async ({ client, urls }) => {
   if (error) throw error;
 };
 
+export const collectContentAssetUrls = ({ entityType, row, assets = [] }) => {
+  const urls = new Set();
+  const pushUrl = (value) => {
+    const normalized = String(value || '').trim();
+    if (normalized) {
+      urls.add(normalized);
+    }
+  };
+
+  pushUrl(row?.cover_image_url);
+  if (entityType === 'character') {
+    pushUrl(row?.avatar_image_url);
+  }
+
+  const imageSlots = Array.isArray(row?.prompt_profile_json?.imageSlots)
+    ? row.prompt_profile_json.imageSlots
+    : [];
+  for (const slot of imageSlots) {
+    pushUrl(slot?.thumbUrl);
+    pushUrl(slot?.cardUrl);
+    pushUrl(slot?.detailUrl);
+  }
+
+  for (const asset of assets) {
+    pushUrl(asset?.url);
+  }
+
+  return Array.from(urls);
+};
+
 export const isOwnerUser = async ({ event, userId }) => {
   const client = await userClient(event);
   if (!client || !userId) return false;
@@ -840,12 +870,18 @@ export const deleteContent = async ({ event, entityType, id }) => {
   const table = entityType === 'character' ? 'characters' : 'worlds';
   const assetTable = entityType === 'character' ? 'character_assets' : 'world_assets';
   const fkColumn = entityType === 'character' ? 'character_id' : 'world_id';
-  const { data: row, error: rowError } = await client.from(table).select('id').or(`id.eq.${id},slug.eq.${id}`).maybeSingle();
+  const selectFields = entityType === 'character'
+    ? 'id, cover_image_url, avatar_image_url, prompt_profile_json'
+    : 'id, cover_image_url, prompt_profile_json';
+  const { data: row, error: rowError } = await client.from(table).select(selectFields).or(`id.eq.${id},slug.eq.${id}`).maybeSingle();
   if (rowError) throw rowError;
   if (!row?.id) return false;
   const { data: assets, error: assetError } = await client.from(assetTable).select('url').eq(fkColumn, row.id);
   if (assetError) throw assetError;
-  await removeStorageObjectsByUrls({ client, urls: (assets || []).map((asset) => asset.url) });
+  await removeStorageObjectsByUrls({
+    client,
+    urls: collectContentAssetUrls({ entityType, row, assets: assets || [] }),
+  });
   const { error } = await client.from(table).delete().eq('id', row.id);
   if (error) throw error;
   return true;

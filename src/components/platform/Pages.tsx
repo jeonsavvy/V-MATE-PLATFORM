@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Eye, EyeOff, Image, ImagePlus, Loader2, MessageCircle, PlusCircle, Trash2 } from 'lucide-react'
+import { ArrowLeft, BookMarked, Eye, EyeOff, Image, ImagePlus, Loader2, MessageCircle, PlusCircle, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { CharacterDetail, CharacterSummary, LibraryPayload, OwnerOpsDashboard, RoomSummary, WorldDetail, WorldSummary } from '@/lib/platform/types'
 import { platformApi } from '@/lib/platform/apiClient'
@@ -104,6 +104,7 @@ export function CharacterDetailPage({ chrome, slug }: { chrome: PlatformPageChro
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pendingWorldSlug, setPendingWorldSlug] = useState<string | null | undefined>(undefined)
   const [aliasOpen, setAliasOpen] = useState(false)
+  const [isBookmarked, setIsBookmarked] = useState(false)
 
   useEffect(() => {
     let mounted = true
@@ -116,6 +117,24 @@ export function CharacterDetailPage({ chrome, slug }: { chrome: PlatformPageChro
       .catch((error) => toast.error(error instanceof Error ? error.message : '캐릭터를 불러오지 못했습니다.'))
     return () => { mounted = false }
   }, [slug])
+
+  useEffect(() => {
+    if (!chrome.user || !item) {
+      setIsBookmarked(false)
+      return
+    }
+
+    let mounted = true
+    void platformApi.addRecentView('character', item.slug).catch(() => undefined)
+    void platformApi.fetchLibrary()
+      .then((data) => {
+        if (!mounted) return
+        setIsBookmarked(data.bookmarks.some((entry) => entry.entityType === 'character' && entry.item.slug === item.slug))
+      })
+      .catch(() => undefined)
+
+    return () => { mounted = false }
+  }, [chrome.user, item])
 
   const startRoom = (worldSlug?: string | null, aliasOverride?: string) => {
     if (!item) return
@@ -136,6 +155,21 @@ export function CharacterDetailPage({ chrome, slug }: { chrome: PlatformPageChro
       return
     }
     startRoom(selectedWorldSlug, displayName)
+  }
+
+  const handleBookmarkToggle = () => {
+    if (!item) return
+    if (!chrome.user) {
+      chrome.onAuthRequest()
+      return
+    }
+
+    void platformApi.toggleBookmark('character', item.slug)
+      .then(({ active }) => {
+        setIsBookmarked(active)
+        toast.success(active ? '즐겨찾기에 저장했습니다.' : '즐겨찾기를 해제했습니다.')
+      })
+      .catch((error) => toast.error(error instanceof Error ? error.message : '즐겨찾기 처리에 실패했습니다.'))
   }
 
   const worldPickerItems = availableWorlds.map((world) => ({
@@ -183,6 +217,7 @@ export function CharacterDetailPage({ chrome, slug }: { chrome: PlatformPageChro
           <div className="flex flex-wrap gap-3">
             <Button onClick={() => handleStart(null)}><MessageCircle className="h-4 w-4" />캐릭터와 바로 대화</Button>
             <Button variant="outline" onClick={() => setPickerOpen(true)}>월드 선택 후 시작</Button>
+            <Button variant="outline" onClick={handleBookmarkToggle}><BookMarked className="h-4 w-4" />{isBookmarked ? '즐겨찾기 해제' : '즐겨찾기 저장'}</Button>
             {chrome.user?.id === item.creator.id ? <Button variant="outline" onClick={() => chrome.onNavigate(`/edit/character/${item.slug}`)}>수정</Button> : null}
           </div>
 
@@ -204,6 +239,7 @@ export function WorldDetailPage({ chrome, slug }: { chrome: PlatformPageChromePr
   const [pickerOpen, setPickerOpen] = useState(false)
   const [aliasOpen, setAliasOpen] = useState(false)
   const [pendingCharacter, setPendingCharacter] = useState<CharacterSummary | null>(null)
+  const [isBookmarked, setIsBookmarked] = useState(false)
 
   useEffect(() => {
     let mounted = true
@@ -216,6 +252,24 @@ export function WorldDetailPage({ chrome, slug }: { chrome: PlatformPageChromePr
       .catch((error) => toast.error(error instanceof Error ? error.message : '월드를 불러오지 못했습니다.'))
     return () => { mounted = false }
   }, [slug])
+
+  useEffect(() => {
+    if (!chrome.user || !item) {
+      setIsBookmarked(false)
+      return
+    }
+
+    let mounted = true
+    void platformApi.addRecentView('world', item.slug).catch(() => undefined)
+    void platformApi.fetchLibrary()
+      .then((data) => {
+        if (!mounted) return
+        setIsBookmarked(data.bookmarks.some((entry) => entry.entityType === 'world' && entry.item.slug === item.slug))
+      })
+      .catch(() => undefined)
+
+    return () => { mounted = false }
+  }, [chrome.user, item])
 
   const startRoom = (character: CharacterSummary, aliasOverride?: string) => {
     if (!item) return
@@ -236,6 +290,21 @@ export function WorldDetailPage({ chrome, slug }: { chrome: PlatformPageChromePr
       return
     }
     startRoom(character, displayName)
+  }
+
+  const handleBookmarkToggle = () => {
+    if (!item) return
+    if (!chrome.user) {
+      chrome.onAuthRequest()
+      return
+    }
+
+    void platformApi.toggleBookmark('world', item.slug)
+      .then(({ active }) => {
+        setIsBookmarked(active)
+        toast.success(active ? '즐겨찾기에 저장했습니다.' : '즐겨찾기를 해제했습니다.')
+      })
+      .catch((error) => toast.error(error instanceof Error ? error.message : '즐겨찾기 처리에 실패했습니다.'))
   }
 
   if (!item) {
@@ -282,6 +351,7 @@ export function WorldDetailPage({ chrome, slug }: { chrome: PlatformPageChromePr
             </div>
             <div className="flex flex-wrap gap-3">
               <Button onClick={() => setPickerOpen(true)}><MessageCircle className="h-4 w-4" />캐릭터 선택 후 시작</Button>
+              <Button variant="outline" onClick={handleBookmarkToggle}><BookMarked className="h-4 w-4" />{isBookmarked ? '즐겨찾기 해제' : '즐겨찾기 저장'}</Button>
               {chrome.user?.id === item.creator.id ? <Button variant="outline" onClick={() => chrome.onNavigate(`/edit/world/${item.slug}`)}>수정</Button> : null}
             </div>
             <PageSection title="월드 정보" className="bg-white/[0.03]">
@@ -810,6 +880,11 @@ export function CreateCharacterPage({ chrome, slug }: { chrome: PlatformPageChro
   return (
     <PageFrame chrome={chrome}>
       <div className="mx-auto max-w-4xl space-y-6">
+        <PageSection title={slug ? '캐릭터 수정' : '캐릭터 만들기'} className="bg-white/[0.03]">
+          <p className="text-sm leading-7 text-white/62">
+            공개 상세 화면과 별개로 프롬프트, 도입부, 이미지를 편집하는 화면입니다.
+          </p>
+        </PageSection>
         <PageSection title="기본 정보">
           <div className="grid gap-4">
             <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="캐릭터 이름" className="bg-white/5 text-white placeholder:text-white/35" />
@@ -1012,6 +1087,11 @@ export function CreateWorldPage({ chrome, slug }: { chrome: PlatformPageChromePr
   return (
     <PageFrame chrome={chrome}>
       <div className="mx-auto max-w-4xl space-y-6">
+        <PageSection title={slug ? '월드 수정' : '월드 만들기'} className="bg-white/[0.03]">
+          <p className="text-sm leading-7 text-white/62">
+            공개 상세 화면과 별개로 프롬프트, 도입부, 이미지를 편집하는 화면입니다.
+          </p>
+        </PageSection>
         <PageSection title="기본 정보">
           <div className="grid gap-4">
             <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="월드 이름" className="bg-white/5 text-white placeholder:text-white/35" />

@@ -247,6 +247,12 @@ test('home and detail views avoid fake metrics and duplicated management section
   assert.equal(pagesSource.includes('소지품'), false);
   assert.equal(pagesSource.includes('의상/자세'), false);
   assert.equal(pagesSource.includes('미래 일정/약속'), false);
+  assert.ok(pagesSource.includes("platformApi.addRecentView('character', item.slug)"));
+  assert.ok(pagesSource.includes("platformApi.addRecentView('world', item.slug)"));
+  assert.ok(pagesSource.includes("platformApi.toggleBookmark('character', item.slug)"));
+  assert.ok(pagesSource.includes("platformApi.toggleBookmark('world', item.slug)"));
+  assert.ok(pagesSource.includes('즐겨찾기 저장'));
+  assert.ok(pagesSource.includes('즐겨찾기 해제'));
 });
 
 test('platform shell keeps ops inside create section instead of top-level nav', async () => {
@@ -330,6 +336,15 @@ test('editing prompt content preserves existing image urls when no new upload ha
   assert.ok(source.includes("findVariant('thumb') || slot.existingThumbUrl || ''"));
   assert.ok(source.includes("findVariant('card') || slot.existingCardUrl || ''"));
   assert.ok(source.includes("findVariant('detail') || findVariant('hero') || slot.existingDetailUrl || ''"));
+});
+
+test('edit pages clearly label editing mode separately from public detail pages', async () => {
+  const pagesPath = path.join(srcRoot, 'components/platform/Pages.tsx');
+  const source = await readFile(pagesPath, 'utf8');
+
+  assert.ok(source.includes("slug ? '캐릭터 수정' : '캐릭터 만들기'"));
+  assert.ok(source.includes("slug ? '월드 수정' : '월드 만들기'"));
+  assert.ok(source.includes('공개 상세 화면과 별개로 프롬프트, 도입부, 이미지를 편집하는 화면입니다.'));
 });
 
 test('ops page exposes banner auto/manual controls and delete actions', async () => {
