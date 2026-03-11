@@ -63,7 +63,7 @@ export const getGeminiRetryConfig = () => ({
     networkRecoveryRetryEnabled:
         String(process.env.GEMINI_NETWORK_RECOVERY_RETRY_ENABLED || 'true').toLowerCase() !== 'false',
     emptyResponseRetryEnabled:
-        String(process.env.GEMINI_EMPTY_RESPONSE_RETRY_ENABLED || 'false').toLowerCase() === 'true',
+        String(process.env.GEMINI_EMPTY_RESPONSE_RETRY_ENABLED || 'true').toLowerCase() !== 'false',
 });
 
 export const getGeminiThinkingLevel = () => {

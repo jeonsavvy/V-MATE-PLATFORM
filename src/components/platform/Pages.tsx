@@ -436,6 +436,7 @@ export function RoomPage({ chrome, roomId }: { chrome: PlatformPageChromeProps; 
   const [room, setRoom] = useState<RoomSummary | null>(null)
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [needsRetry, setNeedsRetry] = useState(false)
 
   useEffect(() => {
     if (!chrome.user) return
@@ -516,19 +517,39 @@ export function RoomPage({ chrome, roomId }: { chrome: PlatformPageChromeProps; 
             </div>
 
             <div className="space-y-3 border-t border-white/8 pt-4">
-              <textarea value={input} onChange={(event) => setInput(event.target.value)} placeholder="대사를 입력하세요. 예) 반가워!" className="min-h-[160px] w-full rounded-[1.5rem] border border-white/10 bg-[#121418] px-4 py-4 text-[15px] leading-7 text-white outline-none placeholder:text-white/28" />
+              <textarea value={input} onChange={(event) => {
+                setInput(event.target.value)
+                if (needsRetry) {
+                  setNeedsRetry(false)
+                }
+              }} placeholder="대사를 입력하세요. 예) 반가워!" className="min-h-[160px] w-full rounded-[1.5rem] border border-white/10 bg-[#121418] px-4 py-4 text-[15px] leading-7 text-white outline-none placeholder:text-white/28" />
+              {needsRetry ? (
+                <div className="rounded-[1.2rem] border border-[#ffcc88]/30 bg-[#ffcc88]/10 px-4 py-3 text-sm text-white/78">
+                  일시적으로 응답이 비어 다시 시도가 필요합니다. 입력 내용은 유지되어 바로 다시 보낼 수 있습니다.
+                </div>
+              ) : null}
               <div className="flex justify-end">
                 <Button disabled={isLoading || !input.trim()} onClick={() => {
                   if (!input.trim()) return
+                  setNeedsRetry(false)
                   setIsLoading(true)
                   void platformApi.sendRoomMessage(room.id, input.trim())
                     .then((payload) => {
                       setRoom(payload.room)
                       setInput('')
+                      setNeedsRetry(false)
                     })
-                    .catch((error) => toast.error(error instanceof Error ? error.message : '메시지 전송에 실패했습니다.'))
+                    .catch((error) => {
+                      const message = error instanceof Error ? error.message : '메시지 전송에 실패했습니다.'
+                      if (message.includes('Gemini returned an empty response')) {
+                        setNeedsRetry(true)
+                        toast.error('응답이 비어 다시 시도할 수 있습니다. 입력 내용은 유지됩니다.')
+                        return
+                      }
+                      toast.error(message)
+                    })
                     .finally(() => setIsLoading(false))
-                }}>보내기</Button>
+                }}>{needsRetry ? '다시 시도' : '보내기'}</Button>
               </div>
             </div>
           </div>

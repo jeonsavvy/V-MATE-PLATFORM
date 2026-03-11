@@ -200,6 +200,15 @@ test('edit pages expose creator-owned delete actions through non-blocking dialog
   assert.ok(source.includes('월드 삭제'));
 });
 
+test('room page keeps retry guidance scoped to failed sends only', async () => {
+  const pagesPath = path.join(srcRoot, 'components', 'platform', 'Pages.tsx');
+  const source = await readFile(pagesPath, 'utf8');
+
+  assert.ok(source.includes('일시적으로 응답이 비어 다시 시도가 필요합니다. 입력 내용은 유지되어 바로 다시 보낼 수 있습니다.'));
+  assert.ok(source.includes("message.includes('Gemini returned an empty response')"));
+  assert.ok(source.includes("needsRetry ? '다시 시도' : '보내기'"));
+});
+
 test('platform types and api client are character-world only', async () => {
   const typesPath = path.join(srcRoot, 'lib/platform/types.ts');
   const typesSource = await readFile(typesPath, 'utf8');

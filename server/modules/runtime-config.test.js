@@ -4,6 +4,7 @@ import {
   getChatRuntimeLimits,
   getChatAuthConfig,
   getClientRequestDedupeConfig,
+  getGeminiRetryConfig,
   getPromptCacheStoreMode,
   getRateLimitConfig,
   getRateLimitMaxKeys,
@@ -45,6 +46,9 @@ const KEYS = [
   'VITE_PUBLIC_SUPABASE_URL',
   'VITE_PUBLIC_SUPABASE_ANON_KEY',
   'VITE_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
+  'GEMINI_CACHE_LOOKUP_RETRY_ENABLED',
+  'GEMINI_NETWORK_RECOVERY_RETRY_ENABLED',
+  'GEMINI_EMPTY_RESPONSE_RETRY_ENABLED',
 ];
 
 const ORIGINAL = Object.fromEntries(KEYS.map((key) => [key, process.env[key]]));
@@ -234,5 +238,25 @@ test('parses chat auth config with secure defaults and env fallback', () => {
     authProviderRetryCount: 2,
     supabaseUrl: 'https://public-url.supabase.co',
     supabaseAnonKey: 'publishable-key',
+  });
+});
+
+test('gemini retry config retries empty responses by default and honors explicit disable', () => {
+  delete process.env.GEMINI_CACHE_LOOKUP_RETRY_ENABLED;
+  delete process.env.GEMINI_NETWORK_RECOVERY_RETRY_ENABLED;
+  delete process.env.GEMINI_EMPTY_RESPONSE_RETRY_ENABLED;
+
+  assert.deepEqual(getGeminiRetryConfig(), {
+    cacheLookupRetryEnabled: true,
+    networkRecoveryRetryEnabled: true,
+    emptyResponseRetryEnabled: true,
+  });
+
+  process.env.GEMINI_EMPTY_RESPONSE_RETRY_ENABLED = 'false';
+
+  assert.deepEqual(getGeminiRetryConfig(), {
+    cacheLookupRetryEnabled: true,
+    networkRecoveryRetryEnabled: true,
+    emptyResponseRetryEnabled: false,
   });
 });
