@@ -294,6 +294,78 @@ test('returns structured 413 when chat request body exceeds worker read limit', 
   assert.equal(response.headers.get('x-v-mate-trace-id'), payload.trace_id);
 });
 
+test('runs scheduled Supabase keepalive via waitUntil using publishable key', async () => {
+  const fetchCalls = [];
+  const waitUntilPromises = [];
+  const isolatedWorker = createWorker({
+    keepaliveFetchImpl: async (url, init) => {
+      fetchCalls.push({
+        url,
+        method: init?.method,
+        headers: Object.fromEntries(new Headers(init?.headers || {}).entries()),
+      });
+      return new Response('[]', {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+    },
+  });
+
+  await isolatedWorker.scheduled?.(
+    {
+      cron: '0 */6 * * *',
+      scheduledTime: Date.now(),
+    },
+    {
+      VITE_SUPABASE_URL: 'https://demo.supabase.co/',
+      VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_demo',
+    },
+    {
+      waitUntil(promise) {
+        waitUntilPromises.push(promise);
+      },
+    },
+  );
+
+  assert.equal(waitUntilPromises.length, 1);
+  await Promise.all(waitUntilPromises);
+  assert.equal(fetchCalls.length, 1);
+  assert.equal(fetchCalls[0]?.url, 'https://demo.supabase.co/rest/v1/characters?select=id&limit=1');
+  assert.equal(fetchCalls[0]?.method, 'GET');
+  assert.equal(fetchCalls[0]?.headers.apikey, 'sb_publishable_demo');
+  assert.equal('authorization' in (fetchCalls[0]?.headers || {}), false);
+});
+
+test('skips scheduled Supabase keepalive when public Supabase config is missing', async () => {
+  let called = false;
+  const waitUntilPromises = [];
+  const isolatedWorker = createWorker({
+    keepaliveFetchImpl: async () => {
+      called = true;
+      return new Response('[]', { status: 200 });
+    },
+  });
+
+  await isolatedWorker.scheduled?.(
+    {
+      cron: '0 */6 * * *',
+      scheduledTime: Date.now(),
+    },
+    {},
+    {
+      waitUntil(promise) {
+        waitUntilPromises.push(promise);
+      },
+    },
+  );
+
+  assert.equal(waitUntilPromises.length, 1);
+  await Promise.all(waitUntilPromises);
+  assert.equal(called, false);
+});
+
 test('applies fallback cors/trace/cache headers when chat handler omits them', async () => {
   const isolatedWorker = createWorker({
     chatHandlerImpl: async () => ({

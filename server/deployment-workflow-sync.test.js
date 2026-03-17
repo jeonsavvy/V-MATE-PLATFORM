@@ -47,6 +47,14 @@ test('wrangler config runs worker first for shell routes that need runtime env i
   assert.match(wranglerConfig, /"\/chat\/\*"/);
 });
 
+test('wrangler config enables Cloudflare cron trigger for Supabase keepalive', async () => {
+  const wranglerConfig = await readUtf8('wrangler.jsonc');
+
+  assert.match(wranglerConfig, /"triggers"\s*:\s*\{/);
+  assert.match(wranglerConfig, /"crons"\s*:\s*\[/);
+  assert.match(wranglerConfig, /"0 \*\/6 \* \* \*"/);
+});
+
 test('README documents worker auto-deploy, optional smoke-check url, runtime prerequisites, and rollback', async () => {
   const readme = await readUtf8('README.md');
 

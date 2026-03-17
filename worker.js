@@ -9,6 +9,9 @@ import { handlePlatformApi } from "./server/platform/api.js";
 
 // Worker는 정적 셸 응답에 runtime env를 주입하고, chat API와 platform API를 분기한다.
 const CHAT_API_PATH = "/api/chat";
+const SUPABASE_KEEPALIVE_PATH = "/rest/v1/characters?select=id&limit=1";
+const SUPABASE_KEEPALIVE_TIMEOUT_MS = 10_000;
+const SUPABASE_KEEPALIVE_MAX_ATTEMPTS = 2;
 const CLIENT_RUNTIME_ENV_KEYS = [
   "VITE_SUPABASE_URL",
   "VITE_SUPABASE_ANON_KEY",
@@ -18,6 +21,19 @@ const CLIENT_RUNTIME_ENV_KEYS = [
   "VITE_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
   "VITE_CHAT_API_BASE_URL",
 ];
+
+const firstNonEmpty = (candidates) => {
+  for (const candidate of candidates) {
+    const normalized = String(candidate || "").trim();
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return "";
+};
+
+const normalizeUrl = (value) => String(value || "").trim().replace(/\/+$/, "");
 
 const isChatApiRequest = (pathname) =>
   pathname === CHAT_API_PATH || pathname === `${CHAT_API_PATH}/`;
@@ -42,6 +58,101 @@ const syncWorkerEnvToProcessEnv = (env) => {
       process.env[key] = value;
     }
   }
+};
+
+const resolveSupabaseKeepaliveConfig = (env = {}) => {
+  const supabaseUrl = normalizeUrl(firstNonEmpty([
+    env.SUPABASE_URL,
+    env.VITE_SUPABASE_URL,
+    env.VITE_PUBLIC_SUPABASE_URL,
+  ]));
+
+  const supabasePublicKey = firstNonEmpty([
+    env.SUPABASE_PUBLISHABLE_KEY,
+    env.SUPABASE_ANON_KEY,
+    env.VITE_SUPABASE_PUBLISHABLE_KEY,
+    env.VITE_SUPABASE_ANON_KEY,
+    env.VITE_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+    env.VITE_PUBLIC_SUPABASE_ANON_KEY,
+  ]);
+
+  return {
+    enabled: Boolean(supabaseUrl && supabasePublicKey),
+    keepaliveUrl: supabaseUrl ? `${supabaseUrl}${SUPABASE_KEEPALIVE_PATH}` : "",
+    supabasePublicKey,
+  };
+};
+
+const createTimeoutSignal = (timeoutMs) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort(new Error(`Timed out after ${timeoutMs}ms`));
+  }, timeoutMs);
+
+  return {
+    signal: controller.signal,
+    cleanup: () => clearTimeout(timer),
+  };
+};
+
+const runSupabaseKeepalive = async ({
+  env,
+  fetchImpl = fetch,
+}) => {
+  const { enabled, keepaliveUrl, supabasePublicKey } = resolveSupabaseKeepaliveConfig(env);
+
+  if (!enabled) {
+    console.warn("[V-MATE] Supabase keepalive skipped: public Supabase config is missing.");
+    return { ok: false, skipped: true };
+  }
+
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= SUPABASE_KEEPALIVE_MAX_ATTEMPTS; attempt += 1) {
+    const { signal, cleanup } = createTimeoutSignal(SUPABASE_KEEPALIVE_TIMEOUT_MS);
+
+    try {
+      const response = await fetchImpl(keepaliveUrl, {
+        method: "GET",
+        headers: {
+          apikey: supabasePublicKey,
+          Accept: "application/json",
+          "Cache-Control": "no-store",
+          "X-V-MATE-Task": "supabase-keepalive",
+        },
+        signal,
+      });
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        throw new Error(
+          `[V-MATE] Supabase keepalive failed (${response.status})${body ? `: ${body.slice(0, 200)}` : ""}`
+        );
+      }
+
+      console.info("[V-MATE] Supabase keepalive succeeded.", {
+        attempt,
+        status: response.status,
+      });
+      return {
+        ok: true,
+        skipped: false,
+        status: response.status,
+      };
+    } catch (error) {
+      lastError = error;
+      if (attempt === SUPABASE_KEEPALIVE_MAX_ATTEMPTS) {
+        break;
+      }
+    } finally {
+      cleanup();
+    }
+  }
+
+  console.error("[V-MATE] Supabase keepalive failed after retries.", {
+    message: lastError?.message || String(lastError),
+  });
+  throw lastError;
 };
 
 // Worker 레벨에서 body 크기를 먼저 제한해 upstream 호출 전에 실패를 확정한다.
@@ -324,7 +435,11 @@ const serveStaticAsset = async (request, env) => {
   return injectRuntimeEnvIntoHtml(assetResponse, env);
 };
 
-export const createWorker = ({ chatHandlerImpl = chatHandler, chatHandlerContext = {} } = {}) => ({
+export const createWorker = ({
+  chatHandlerImpl = chatHandler,
+  chatHandlerContext = {},
+  keepaliveFetchImpl = fetch,
+} = {}) => ({
   async fetch(request, env) {
     const url = new URL(request.url);
 
@@ -337,6 +452,21 @@ export const createWorker = ({ chatHandlerImpl = chatHandler, chatHandlerContext
     }
 
     return serveStaticAsset(request, env);
+  },
+
+  async scheduled(_controller, env, ctx) {
+    syncWorkerEnvToProcessEnv(env);
+    const task = runSupabaseKeepalive({
+      env,
+      fetchImpl: keepaliveFetchImpl,
+    });
+
+    if (ctx && typeof ctx.waitUntil === "function") {
+      ctx.waitUntil(task);
+      return;
+    }
+
+    return task;
   },
 });
 
