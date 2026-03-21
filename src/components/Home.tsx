@@ -67,7 +67,7 @@ export function Home({ user, userAvatarInitial, searchQuery, onSearchChange, onN
           {characterItems.length === 0 ? (
             <EmptyState title="캐릭터가 없습니다" description="검색어나 필터를 바꿔 다시 확인해보세요." />
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
               {characterItems.map((item) => (
                 <EntityCard
                   key={`${item.entityType}-${item.id}`}
@@ -88,7 +88,7 @@ export function Home({ user, userAvatarInitial, searchQuery, onSearchChange, onN
           {worldItems.length === 0 ? (
             <EmptyState title="월드가 없습니다" description="검색어나 필터를 바꿔 다시 확인해보세요." />
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {worldItems.map((item) => (
                 <EntityCard
                   key={`${item.entityType}-${item.id}`}

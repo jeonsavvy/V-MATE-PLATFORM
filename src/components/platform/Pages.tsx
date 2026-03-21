@@ -231,8 +231,8 @@ export function CharacterDetailPage({ chrome, slug }: { chrome: PlatformPageChro
         onSelect={(worldSlug) => { setPickerOpen(false); handleStart(worldSlug) }}
       />
       <AliasDialog open={aliasOpen} initialValue={String(chrome.user?.user_metadata?.name || '')} onConfirm={(value) => { setAliasOpen(false); startRoom(pendingWorldSlug ?? null, value) }} />
-      <div className="grid gap-6 xl:grid-cols-[0.84fr_1.16fr]">
-        <ArtworkFrame src={item.coverImageUrl} alt={item.name} aspectClassName="aspect-[3/4] xl:max-h-[720px]" priority />
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,0.84fr)_minmax(0,1.16fr)]">
+        <ArtworkFrame src={item.coverImageUrl} alt={item.name} aspectClassName="aspect-[3/4] xl:max-h-[720px]" className="mx-auto w-full max-w-[28rem] lg:mx-0 lg:max-w-none" priority />
         <div className="space-y-6 rounded-[2rem] border border-white/10 bg-[#20242b] p-6">
           <div>
             <p className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-white/42">캐릭터</p>
@@ -369,7 +369,7 @@ export function WorldDetailPage({ chrome, slug }: { chrome: PlatformPageChromePr
       />
       <div className="space-y-6">
         <ArtworkFrame src={item.coverImageUrl} alt={item.name} aspectClassName="aspect-[16/9]" priority />
-        <div className="grid gap-6 xl:grid-cols-[1.02fr_0.98fr]">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)]">
           <div className="space-y-6 rounded-[2rem] border border-white/10 bg-[#20242b] p-6">
             <div>
               <p className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-white/42">월드</p>
@@ -492,12 +492,12 @@ export function RoomPage({ chrome, roomId }: { chrome: PlatformPageChromeProps; 
       {!room ? (
         <EmptyState title="대화를 불러오는 중" description="최근 장면과 상태를 정리하고 있습니다." />
       ) : (
-        <div className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
           <div className="space-y-4">
             {room.world ? (
               <ArtworkFrame src={activeWorldImage} alt={room.world.name} aspectClassName="aspect-[16/9]" priority />
             ) : null}
-            <ArtworkFrame src={activeCharacterImage} alt={room.character.name} aspectClassName="aspect-[3/4]" priority />
+            <ArtworkFrame src={activeCharacterImage} alt={room.character.name} aspectClassName="aspect-[3/4]" className="mx-auto w-full max-w-[28rem] lg:mx-0 lg:max-w-none" priority />
           </div>
           <div className="space-y-6 rounded-[2rem] border border-white/10 bg-[#20242b] p-6">
             <div className="flex items-start justify-between gap-4">
@@ -1378,7 +1378,7 @@ export function RecentRoomsPage({ chrome }: { chrome: PlatformPageChromeProps })
         {items.length === 0 ? (
           <EmptyState title="아직 최근 대화가 없습니다" description="캐릭터나 월드 상세에서 새 대화를 시작해보세요." />
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {items.map((room) => (
               <button key={room.id} type="button" onClick={() => chrome.onNavigate(`/rooms/${room.id}`)} className="w-full rounded-[1.5rem] border border-white/10 bg-white/5 p-4 text-left transition hover:border-white/18 hover:bg-white/7">
                 <div className="flex flex-wrap items-center gap-2">
@@ -1421,7 +1421,7 @@ export function LibraryPage({ chrome }: { chrome: PlatformPageChromeProps }) {
         <div className="space-y-6">
           <PageSection title="즐겨찾기">
             {library.bookmarks.length === 0 ? <EmptyState title="아직 즐겨찾기가 없습니다" description="마음에 드는 캐릭터나 월드를 저장해보세요." /> : (
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                 {library.bookmarks.map((entry) => <EntityCard key={entry.id} item={entry.item} onClick={() => chrome.onNavigate(entry.entityType === 'character' ? `/characters/${entry.item.slug}` : `/worlds/${entry.item.slug}`)} />)}
               </div>
             )}
@@ -1429,7 +1429,7 @@ export function LibraryPage({ chrome }: { chrome: PlatformPageChromeProps }) {
 
           <PageSection title="최근 본 항목">
             {library.recentViews.length === 0 ? <EmptyState title="아직 최근 본 항목이 없습니다" description="상세 페이지를 둘러보면 여기에 쌓입니다." /> : (
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                 {library.recentViews.map((entry) => <EntityCard key={entry.id} item={entry.item} onClick={() => chrome.onNavigate(entry.entityType === 'character' ? `/characters/${entry.item.slug}` : `/worlds/${entry.item.slug}`)} />)}
               </div>
             )}
@@ -1437,7 +1437,7 @@ export function LibraryPage({ chrome }: { chrome: PlatformPageChromeProps }) {
 
           <PageSection title="내가 만든 캐릭터">
             {library.owned.characters.length === 0 ? <EmptyState title="아직 만든 캐릭터가 없습니다" description="캐릭터 만들기에서 첫 캐릭터를 등록해보세요." /> : (
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                 {library.owned.characters.map((item) => <EntityCard key={item.id} item={item} onClick={() => chrome.onNavigate(`/characters/${item.slug}`)} />)}
               </div>
             )}
@@ -1445,7 +1445,7 @@ export function LibraryPage({ chrome }: { chrome: PlatformPageChromeProps }) {
 
           <PageSection title="내가 만든 월드">
             {library.owned.worlds.length === 0 ? <EmptyState title="아직 만든 월드가 없습니다" description="월드 만들기에서 첫 월드를 등록해보세요." /> : (
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                 {library.owned.worlds.map((item) => <EntityCard key={item.id} item={item} onClick={() => chrome.onNavigate(`/worlds/${item.slug}`)} />)}
               </div>
             )}

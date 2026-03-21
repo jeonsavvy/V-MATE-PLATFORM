@@ -383,3 +383,43 @@ test('footer removes border divider and keeps copyright only', async () => {
   assert.equal(source.includes('<footer className="border-t'), false);
   assert.ok(source.includes('© V-MATE'));
 });
+
+test('platform shell uses a mobile drawer and a constrained desktop content container', async () => {
+  const scaffoldPath = path.join(srcRoot, 'components/platform/PlatformScaffold.tsx');
+  const source = await readFile(scaffoldPath, 'utf8');
+
+  assert.ok(source.includes("const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)"));
+  assert.ok(source.includes("aria-label={isMobileNavOpen ? '메뉴 닫기' : '메뉴 열기'}"));
+  assert.ok(source.includes('className="hidden border-r border-white/10 bg-[#111317] lg:flex'));
+  assert.ok(source.includes('lg:grid-cols-[248px_minmax(0,1fr)]'));
+  assert.ok(source.includes('max-w-[1400px]'));
+  assert.ok(source.includes('lg:hidden'));
+  assert.equal(source.includes('className="grid min-h-dvh grid-cols-[248px_minmax(0,1fr)]"'), false);
+});
+
+test('feed and library grids use multi-breakpoint columns instead of xl-only expansion', async () => {
+  const homePath = path.join(srcRoot, 'components/Home.tsx');
+  const homeSource = await readFile(homePath, 'utf8');
+  assert.match(homeSource, /grid-cols-1[\s\S]*sm:grid-cols-2[\s\S]*lg:grid-cols-3[\s\S]*2xl:grid-cols-4/);
+  assert.match(homeSource, /grid-cols-1[\s\S]*sm:grid-cols-2[\s\S]*lg:grid-cols-3/);
+  assert.equal(homeSource.includes('grid gap-4 sm:grid-cols-2 xl:grid-cols-4'), false);
+  assert.equal(homeSource.includes('grid gap-4 sm:grid-cols-2 xl:grid-cols-3'), false);
+
+  const pagesPath = path.join(srcRoot, 'components/platform/Pages.tsx');
+  const pagesSource = await readFile(pagesPath, 'utf8');
+  assert.match(pagesSource, /grid-cols-1[\s\S]*md:grid-cols-2[\s\S]*xl:grid-cols-3/);
+  assert.match(pagesSource, /grid-cols-1[\s\S]*sm:grid-cols-2[\s\S]*lg:grid-cols-3[\s\S]*2xl:grid-cols-4/);
+});
+
+test('detail and room layouts switch at laptop widths and keep portrait art bounded', async () => {
+  const pagesPath = path.join(srcRoot, 'components/platform/Pages.tsx');
+  const source = await readFile(pagesPath, 'utf8');
+
+  assert.ok(source.includes('lg:grid-cols-[minmax(0,0.84fr)_minmax(0,1.16fr)]'));
+  assert.ok(source.includes('lg:grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)]'));
+  assert.ok(source.includes('lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]'));
+  assert.ok(source.includes('className="mx-auto w-full max-w-[28rem] lg:mx-0 lg:max-w-none"'));
+  assert.equal(source.includes('xl:grid-cols-[0.84fr_1.16fr]'), false);
+  assert.equal(source.includes('xl:grid-cols-[1.02fr_0.98fr]'), false);
+  assert.equal(source.includes('xl:grid-cols-[0.92fr_1.08fr]'), false);
+});
