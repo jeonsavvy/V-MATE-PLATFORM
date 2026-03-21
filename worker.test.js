@@ -294,7 +294,7 @@ test('returns structured 413 when chat request body exceeds worker read limit', 
   assert.equal(response.headers.get('x-v-mate-trace-id'), payload.trace_id);
 });
 
-test('runs scheduled Supabase keepalive via waitUntil for both public content tables', async () => {
+test('runs scheduled Supabase keepalive via waitUntil for staggered public table probes', async () => {
   const fetchCalls = [];
   const waitUntilPromises = [];
   const isolatedWorker = createWorker({
@@ -315,8 +315,8 @@ test('runs scheduled Supabase keepalive via waitUntil for both public content ta
 
   await isolatedWorker.scheduled?.(
     {
-      cron: '0 */6 * * *',
-      scheduledTime: Date.now(),
+      cron: '3,18,33,48 * * * *',
+      scheduledTime: 2 * 15 * 60 * 1000,
     },
     {
       VITE_SUPABASE_URL: 'https://demo.supabase.co/',
@@ -331,20 +331,28 @@ test('runs scheduled Supabase keepalive via waitUntil for both public content ta
 
   assert.equal(waitUntilPromises.length, 1);
   await Promise.all(waitUntilPromises);
-  assert.equal(fetchCalls.length, 2);
+  assert.equal(fetchCalls.length, 4);
   assert.deepEqual(
     fetchCalls.map((call) => call.url),
     [
-      'https://demo.supabase.co/rest/v1/characters?select=id&limit=1',
-      'https://demo.supabase.co/rest/v1/worlds?select=id&limit=1',
+      'https://demo.supabase.co/rest/v1/characters?select=id&order=updated_at.desc&limit=1',
+      'https://demo.supabase.co/rest/v1/characters?select=id&order=updated_at.desc&limit=1&offset=3',
+      'https://demo.supabase.co/rest/v1/worlds?select=id&order=updated_at.desc&limit=1',
+      'https://demo.supabase.co/rest/v1/worlds?select=id&order=updated_at.desc&limit=1&offset=3',
     ],
   );
   assert.equal(fetchCalls[0]?.method, 'GET');
   assert.equal(fetchCalls[1]?.method, 'GET');
+  assert.equal(fetchCalls[2]?.method, 'GET');
+  assert.equal(fetchCalls[3]?.method, 'GET');
   assert.equal(fetchCalls[0]?.headers.apikey, 'sb_publishable_demo');
   assert.equal(fetchCalls[1]?.headers.apikey, 'sb_publishable_demo');
+  assert.equal(fetchCalls[2]?.headers.apikey, 'sb_publishable_demo');
+  assert.equal(fetchCalls[3]?.headers.apikey, 'sb_publishable_demo');
   assert.equal('authorization' in (fetchCalls[0]?.headers || {}), false);
   assert.equal('authorization' in (fetchCalls[1]?.headers || {}), false);
+  assert.equal('authorization' in (fetchCalls[2]?.headers || {}), false);
+  assert.equal('authorization' in (fetchCalls[3]?.headers || {}), false);
 });
 
 test('skips scheduled Supabase keepalive when public Supabase config is missing', async () => {
@@ -359,7 +367,7 @@ test('skips scheduled Supabase keepalive when public Supabase config is missing'
 
   await isolatedWorker.scheduled?.(
     {
-      cron: '0 */6 * * *',
+      cron: '3,18,33,48 * * * *',
       scheduledTime: Date.now(),
     },
     {},

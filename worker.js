@@ -9,12 +9,15 @@ import { handlePlatformApi } from "./server/platform/api.js";
 
 // Worker는 정적 셸 응답에 runtime env를 주입하고, chat API와 platform API를 분기한다.
 const CHAT_API_PATH = "/api/chat";
-const SUPABASE_KEEPALIVE_PATHS = [
-  "/rest/v1/characters?select=id&limit=1",
-  "/rest/v1/worlds?select=id&limit=1",
+const SUPABASE_KEEPALIVE_BASE_PATHS = [
+  "/rest/v1/characters",
+  "/rest/v1/worlds",
 ];
 const SUPABASE_KEEPALIVE_TIMEOUT_MS = 10_000;
-const SUPABASE_KEEPALIVE_MAX_ATTEMPTS = 2;
+const SUPABASE_KEEPALIVE_MAX_ATTEMPTS = 3;
+const SUPABASE_KEEPALIVE_ROTATING_OFFSET_SPREAD = 3;
+const SUPABASE_KEEPALIVE_ROTATING_OFFSET_MIN = 1;
+const SUPABASE_KEEPALIVE_ROTATION_WINDOW_MS = 15 * 60 * 1000;
 const CLIENT_RUNTIME_ENV_KEYS = [
   "VITE_SUPABASE_URL",
   "VITE_SUPABASE_ANON_KEY",
@@ -37,6 +40,27 @@ const firstNonEmpty = (candidates) => {
 };
 
 const normalizeUrl = (value) => String(value || "").trim().replace(/\/+$/, "");
+
+const buildSupabaseKeepaliveUrls = ({ supabaseUrl, scheduledTime = Date.now() }) => {
+  if (!supabaseUrl) {
+    return [];
+  }
+
+  const rotationBucket = Math.max(
+    0,
+    Math.floor(Number(scheduledTime || 0) / SUPABASE_KEEPALIVE_ROTATION_WINDOW_MS),
+  );
+  const rotatingOffset = SUPABASE_KEEPALIVE_ROTATING_OFFSET_MIN
+    + (rotationBucket % SUPABASE_KEEPALIVE_ROTATING_OFFSET_SPREAD);
+  const probeQueries = [
+    "select=id&order=updated_at.desc&limit=1",
+    `select=id&order=updated_at.desc&limit=1&offset=${rotatingOffset}`,
+  ];
+
+  return SUPABASE_KEEPALIVE_BASE_PATHS.flatMap((path) =>
+    probeQueries.map((query) => `${supabaseUrl}${path}?${query}`),
+  );
+};
 
 const isChatApiRequest = (pathname) =>
   pathname === CHAT_API_PATH || pathname === `${CHAT_API_PATH}/`;
@@ -63,7 +87,7 @@ const syncWorkerEnvToProcessEnv = (env) => {
   }
 };
 
-const resolveSupabaseKeepaliveConfig = (env = {}) => {
+const resolveSupabaseKeepaliveConfig = ({ env = {}, scheduledTime } = {}) => {
   const supabaseUrl = normalizeUrl(firstNonEmpty([
     env.SUPABASE_URL,
     env.VITE_SUPABASE_URL,
@@ -81,9 +105,7 @@ const resolveSupabaseKeepaliveConfig = (env = {}) => {
 
   return {
     enabled: Boolean(supabaseUrl && supabasePublicKey),
-    keepaliveUrls: supabaseUrl
-      ? SUPABASE_KEEPALIVE_PATHS.map((path) => `${supabaseUrl}${path}`)
-      : [],
+    keepaliveUrls: buildSupabaseKeepaliveUrls({ supabaseUrl, scheduledTime }),
     supabasePublicKey,
   };
 };
@@ -102,9 +124,13 @@ const createTimeoutSignal = (timeoutMs) => {
 
 const runSupabaseKeepalive = async ({
   env,
+  scheduledTime,
   fetchImpl = fetch,
 }) => {
-  const { enabled, keepaliveUrls, supabasePublicKey } = resolveSupabaseKeepaliveConfig(env);
+  const { enabled, keepaliveUrls, supabasePublicKey } = resolveSupabaseKeepaliveConfig({
+    env,
+    scheduledTime,
+  });
 
   if (!enabled) {
     console.warn("[V-MATE] Supabase keepalive skipped: public Supabase config is missing.");
@@ -468,6 +494,7 @@ export const createWorker = ({
     syncWorkerEnvToProcessEnv(env);
     const task = runSupabaseKeepalive({
       env,
+      scheduledTime: _controller?.scheduledTime,
       fetchImpl: keepaliveFetchImpl,
     });
 
