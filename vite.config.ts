@@ -56,5 +56,4 @@ export default defineConfig({
       },
     },
   },
-  publicDir: 'assets',
 })
