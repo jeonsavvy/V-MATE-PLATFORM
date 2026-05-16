@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(dirname, '..');
 const srcRoot = path.join(repoRoot, 'src');
+const toRepoPath = (filePath) => path.relative(repoRoot, filePath).split(path.sep).join('/');
 
 const walkFiles = async (rootDir) => {
   const entries = await readdir(rootDir, { withFileTypes: true });
@@ -29,7 +30,7 @@ test('frontend localStorage access is centralized in browserStorage module', asy
   for (const filePath of files) {
     const content = await readFile(filePath, 'utf8');
     if (content.includes('localStorage')) {
-      localStorageHits.push(path.relative(repoRoot, filePath));
+      localStorageHits.push(toRepoPath(filePath));
     }
   }
 
@@ -85,7 +86,7 @@ test('frontend window.location.origin access is centralized in browserRuntime mo
   for (const filePath of files) {
     const content = await readFile(filePath, 'utf8');
     if (content.includes('location.origin')) {
-      locationOriginHits.push(path.relative(repoRoot, filePath));
+      locationOriginHits.push(toRepoPath(filePath));
     }
   }
 

@@ -8,8 +8,12 @@ import {
 
 const TRACKED_ENV_KEYS = [
   'REQUIRE_AUTH_FOR_CHAT',
+  'REQUIRE_CONFIGURED_SUPABASE_URL',
   'AUTH_PROVIDER_TIMEOUT_MS',
   'AUTH_PROVIDER_RETRY_COUNT',
+  'APP_ENV',
+  'NODE_ENV',
+  'VITE_APP_ENV',
   'SUPABASE_URL',
   'SUPABASE_ANON_KEY',
   'SUPABASE_PUBLISHABLE_KEY',
@@ -216,4 +220,65 @@ test('resolveAuthenticatedUser returns AUTH_PROVIDER_NOT_CONFIGURED when anon ke
   assert.equal(result.ok, false);
   assert.equal(result.statusCode, 503);
   assert.equal(result.errorCode, 'AUTH_PROVIDER_NOT_CONFIGURED');
+});
+
+test('resolveAuthenticatedUser rejects token-derived Supabase URL in production', async () => {
+  process.env.REQUIRE_AUTH_FOR_CHAT = 'true';
+  process.env.NODE_ENV = 'production';
+  process.env.SUPABASE_ANON_KEY = 'anon-key';
+  delete process.env.SUPABASE_URL;
+  delete process.env.VITE_SUPABASE_URL;
+  delete process.env.VITE_PUBLIC_SUPABASE_URL;
+  const token = buildJwt({
+    iss: 'https://demo-project.supabase.co/auth/v1',
+    sub: 'user-1',
+  });
+
+  const result = await resolveAuthenticatedUser({
+    event: {
+      headers: {
+        authorization: `Bearer ${token}`,
+      },
+    },
+    fetchImpl: async () => {
+      throw new Error('fetch should not be called when Supabase URL is not explicitly configured in production');
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.statusCode, 503);
+  assert.equal(result.errorCode, 'AUTH_PROVIDER_NOT_CONFIGURED');
+});
+
+test('resolveAuthenticatedUser still allows token-derived Supabase URL outside production', async () => {
+  process.env.REQUIRE_AUTH_FOR_CHAT = 'true';
+  process.env.NODE_ENV = 'development';
+  process.env.SUPABASE_ANON_KEY = 'anon-key';
+  delete process.env.SUPABASE_URL;
+  delete process.env.VITE_SUPABASE_URL;
+  delete process.env.VITE_PUBLIC_SUPABASE_URL;
+  const token = buildJwt({
+    iss: 'https://demo-project.supabase.co/auth/v1',
+    sub: 'user-1',
+  });
+
+  const fetchCalls = [];
+  const result = await resolveAuthenticatedUser({
+    event: {
+      headers: {
+        authorization: `Bearer ${token}`,
+      },
+    },
+    fetchImpl: async (url) => {
+      fetchCalls.push(String(url));
+      return new Response(JSON.stringify({ id: 'user-1' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.userId, 'user-1');
+  assert.equal(fetchCalls[0], 'https://demo-project.supabase.co/auth/v1/user');
 });

@@ -2,6 +2,12 @@
 
 V-MATE는 캐릭터와 월드를 조합해 서사형 대화를 운영하는 캐릭터챗 플랫폼입니다.
 
+## 운영 URL
+
+- App: `https://v-mate.jeonsavvy.workers.dev/`
+
+운영 smoke check는 홈 응답, 공개 캐릭터/월드 상세 진입, 로그인 필요 화면의 auth guard, `/api/chat`의 인증/Origin 정책을 확인합니다.
+
 ## 제품 구조
 
 ### 주요 화면
@@ -143,6 +149,7 @@ V_MATE_PROMPT_CACHE_KV=
 
 # Auth / Request policy
 REQUIRE_AUTH_FOR_CHAT=true
+REQUIRE_CONFIGURED_SUPABASE_URL=true
 AUTH_PROVIDER_TIMEOUT_MS=3500
 AUTH_PROVIDER_RETRY_COUNT=1
 CLIENT_REQUEST_DEDUPE_WINDOW_MS=15000
@@ -183,6 +190,8 @@ npm run dev
 - 저장소 기본값의 `ALLOWED_ORIGINS`는 로컬 개발 Origin만 포함합니다.
 - 운영 Origin은 Cloudflare dashboard vars에서 설정합니다.
 - 교차 출처 배포에서는 `VITE_CHAT_API_BASE_URL`과 `ALLOWED_ORIGINS`를 함께 맞춰야 합니다.
+- 운영에서는 `REQUIRE_CONFIGURED_SUPABASE_URL=true` 또는 `APP_ENV=production`으로 토큰 issuer 기반 Supabase URL 추론을 막습니다.
+- Cloudflare binding 이름은 `VITE_SUPABASE_ANON_KEY`처럼 앞뒤 공백 없이 정확히 설정합니다.
 
 ## 데이터베이스 초기화
 
@@ -233,7 +242,7 @@ do update set value_json = excluded.value_json;
 
 ### 배포 체크 포인트
 - `PRODUCTION_APP_URL`은 선택값입니다. 설정하면 post-deploy smoke check가 실행됩니다.
-- `PRODUCTION_APP_URL` 예시: `https://your-app.example.com`
+- 운영 `PRODUCTION_APP_URL`: `https://v-mate.jeonsavvy.workers.dev/`
 - `PRODUCTION_APP_URL`이 없으면 Worker 배포는 진행하고 smoke check만 건너뜁니다.
 - smoke check는 `PRODUCTION_APP_URL` 기준으로 홈 응답과 chat auth guard를 확인합니다.
 - 저장소의 `wrangler.jsonc` 기본값은 로컬 개발 기준입니다.

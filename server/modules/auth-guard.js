@@ -66,6 +66,21 @@ const parseJwtPayload = (token) => {
 
 const normalizeSupabaseUrl = (value) => String(value || '').trim().replace(/\/+$/, '');
 
+const isConfiguredSupabaseUrlRequired = () => {
+    const explicit = process.env.REQUIRE_CONFIGURED_SUPABASE_URL;
+    if (typeof explicit === 'string' && explicit.trim()) {
+        return explicit.trim().toLowerCase() !== 'false';
+    }
+
+    const runtimeEnv = String(
+        process.env.APP_ENV
+        || process.env.NODE_ENV
+        || process.env.VITE_APP_ENV
+        || ''
+    ).trim().toLowerCase();
+    return runtimeEnv === 'production' || runtimeEnv === 'prod';
+};
+
 export const resolveSupabaseUrlFromAccessToken = (accessToken) => {
     const payload = parseJwtPayload(accessToken);
     const issuer = normalizeSupabaseUrl(payload?.iss);
@@ -306,6 +321,14 @@ export const resolveAuthenticatedUser = async ({
             errorCode: 'AUTH_PROVIDER_UNAVAILABLE',
             error: 'Authentication provider fetch is not available.',
             retryable: true,
+        });
+    }
+
+    if (!configuredSupabaseUrl && isConfiguredSupabaseUrlRequired()) {
+        return toAuthFailure({
+            statusCode: 503,
+            errorCode: 'AUTH_PROVIDER_NOT_CONFIGURED',
+            error: 'Authentication provider URL is not configured.',
         });
     }
 

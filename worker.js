@@ -28,6 +28,12 @@ const CLIENT_RUNTIME_ENV_KEYS = [
   "VITE_CHAT_API_BASE_URL",
 ];
 
+const SECURITY_RESPONSE_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+};
+
 const firstNonEmpty = (candidates) => {
   for (const candidate of candidates) {
     const normalized = String(candidate || "").trim();
@@ -40,6 +46,41 @@ const firstNonEmpty = (candidates) => {
 };
 
 const normalizeUrl = (value) => String(value || "").trim().replace(/\/+$/, "");
+
+const readWorkerEnvString = (env, key) => {
+  const directValue = env?.[key];
+  if (typeof directValue === "string") {
+    return directValue;
+  }
+
+  const normalizedKey = String(key || "").trim();
+  for (const [envKey, envValue] of Object.entries(env || {})) {
+    if (String(envKey || "").trim() === normalizedKey && typeof envValue === "string") {
+      return envValue;
+    }
+  }
+
+  return "";
+};
+
+const applySecurityHeaders = (headers = new Headers()) => {
+  const nextHeaders = new Headers(headers);
+  for (const [key, value] of Object.entries(SECURITY_RESPONSE_HEADERS)) {
+    if (!nextHeaders.has(key)) {
+      nextHeaders.set(key, value);
+    }
+  }
+  return nextHeaders;
+};
+
+const withSecurityHeaders = (response) => {
+  const headers = applySecurityHeaders(response.headers);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+};
 
 const buildSupabaseKeepaliveUrls = ({ supabaseUrl, scheduledTime = Date.now() }) => {
   if (!supabaseUrl) {
@@ -82,25 +123,28 @@ const syncWorkerEnvToProcessEnv = (env) => {
 
   for (const [key, value] of Object.entries(env)) {
     if (typeof value === "string") {
-      process.env[key] = value;
+      const normalizedKey = key.trim();
+      if (normalizedKey) {
+        process.env[normalizedKey] = value;
+      }
     }
   }
 };
 
 const resolveSupabaseKeepaliveConfig = ({ env = {}, scheduledTime } = {}) => {
   const supabaseUrl = normalizeUrl(firstNonEmpty([
-    env.SUPABASE_URL,
-    env.VITE_SUPABASE_URL,
-    env.VITE_PUBLIC_SUPABASE_URL,
+    readWorkerEnvString(env, "SUPABASE_URL"),
+    readWorkerEnvString(env, "VITE_SUPABASE_URL"),
+    readWorkerEnvString(env, "VITE_PUBLIC_SUPABASE_URL"),
   ]));
 
   const supabasePublicKey = firstNonEmpty([
-    env.SUPABASE_PUBLISHABLE_KEY,
-    env.SUPABASE_ANON_KEY,
-    env.VITE_SUPABASE_PUBLISHABLE_KEY,
-    env.VITE_SUPABASE_ANON_KEY,
-    env.VITE_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
-    env.VITE_PUBLIC_SUPABASE_ANON_KEY,
+    readWorkerEnvString(env, "SUPABASE_PUBLISHABLE_KEY"),
+    readWorkerEnvString(env, "SUPABASE_ANON_KEY"),
+    readWorkerEnvString(env, "VITE_SUPABASE_PUBLISHABLE_KEY"),
+    readWorkerEnvString(env, "VITE_SUPABASE_ANON_KEY"),
+    readWorkerEnvString(env, "VITE_PUBLIC_SUPABASE_PUBLISHABLE_KEY"),
+    readWorkerEnvString(env, "VITE_PUBLIC_SUPABASE_ANON_KEY"),
   ]);
 
   return {
@@ -274,7 +318,7 @@ const mergeResponseHeaders = (fallbackHeaders = {}, resultHeaders = {}) => ({
 const toWorkerResponse = (result, fallbackHeaders) =>
   new Response(result?.body ?? "", {
     status: result?.statusCode ?? 500,
-    headers: mergeResponseHeaders(fallbackHeaders, result?.headers),
+    headers: applySecurityHeaders(mergeResponseHeaders(fallbackHeaders, result?.headers)),
   });
 
 // /api/chat은 공통 CORS/trace 처리 뒤에 chat handler context를 합성해서 전달한다.
@@ -422,7 +466,7 @@ const buildClientRuntimeEnv = (env) => {
   const runtimeEnv = {};
 
   for (const key of CLIENT_RUNTIME_ENV_KEYS) {
-    const value = env?.[key];
+    const value = readWorkerEnvString(env, key);
     if (typeof value === "string" && value.trim()) {
       runtimeEnv[key] = value;
     }
@@ -434,7 +478,7 @@ const buildClientRuntimeEnv = (env) => {
 const injectRuntimeEnvIntoHtml = async (response, env) => {
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.includes("text/html")) {
-    return response;
+    return withSecurityHeaders(response);
   }
 
   const html = await response.text();
@@ -451,6 +495,11 @@ const injectRuntimeEnvIntoHtml = async (response, env) => {
   headers.delete("etag");
   headers.set("Cache-Control", "no-store, max-age=0");
   headers.set("Pragma", "no-cache");
+  for (const [key, value] of Object.entries(SECURITY_RESPONSE_HEADERS)) {
+    if (!headers.has(key)) {
+      headers.set(key, value);
+    }
+  }
 
   return new Response(body, {
     status: response.status,

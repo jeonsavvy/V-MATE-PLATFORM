@@ -26,6 +26,7 @@ dist-ssr
 # Temporary documentation files
 *.md
 !README.md
+!AGENTS.md
 
 # Editor directories and files
 .vscode/*

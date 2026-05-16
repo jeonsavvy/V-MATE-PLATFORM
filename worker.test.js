@@ -633,6 +633,9 @@ test('injects runtime env script into html responses', async () => {
   assert.match(html, /VITE_CHAT_API_BASE_URL/);
   assert.equal(response.headers.get('cache-control'), 'no-store, max-age=0');
   assert.equal(response.headers.get('pragma'), 'no-cache');
+  assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(response.headers.get('referrer-policy'), 'strict-origin-when-cross-origin');
+  assert.equal(response.headers.get('permissions-policy'), 'camera=(), microphone=(), geolocation=(), payment=()');
   assert.equal(response.headers.get('etag'), null);
 });
 
@@ -661,6 +664,30 @@ test('injects runtime env script into html responses even without html accept he
   assert.match(html, /window\.__V_MATE_RUNTIME_ENV__=/);
   assert.match(html, /VITE_SUPABASE_URL/);
   assert.match(html, /VITE_SUPABASE_PUBLISHABLE_KEY/);
+  assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+});
+
+test('normalizes whitespace around Cloudflare runtime env binding names', async () => {
+  const request = new Request('https://example.com/', {
+    method: 'GET',
+    headers: {
+      accept: 'text/html',
+    },
+  });
+
+  const response = await worker.fetch(request, {
+    ASSETS: {
+      fetch: async () =>
+        new Response('<html><head></head><body>Hello</body></html>', {
+          status: 200,
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+        }),
+    },
+    ' VITE_SUPABASE_ANON_KEY': 'anon-public-key',
+  });
+
+  const html = await response.text();
+  assert.match(html, /"VITE_SUPABASE_ANON_KEY":"anon-public-key"/);
 });
 
 test('serves index.html fallback for html route miss', async () => {
@@ -722,4 +749,6 @@ test('does not inject runtime env script for non-html static assets', async () =
   const body = await response.text();
   assert.equal(body, 'console.log("ok")');
   assert.equal(response.headers.get('content-type'), 'application/javascript');
+  assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(response.headers.get('referrer-policy'), 'strict-origin-when-cross-origin');
 });
